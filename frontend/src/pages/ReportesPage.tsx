@@ -78,6 +78,16 @@ export const ReportesPage: React.FC = () => {
       piezas,
     })).sort((a, b) => b.piezas - a.piezas);
   }, [datosReporte]);
+  const periodoDatosReporte = useMemo(() => {
+    if (datosReporte.length === 0) {
+      return fechaInicio || fechaFin
+        ? `${fechaInicio || 'inicio sin límite'} – ${fechaFin || 'fin sin límite'} (sin registros)`
+        : 'sin registros';
+    }
+
+    const fechas = datosReporte.map((movimiento) => movimiento.fecha).sort();
+    return `${fechas[0]} – ${fechas[fechas.length - 1]}`;
+  }, [datosReporte, fechaInicio, fechaFin]);
 
   const limpiarFiltros = () => {
     setFechaInicio('');
@@ -114,7 +124,7 @@ export const ReportesPage: React.FC = () => {
             icon={<FileSpreadsheet className="w-4 h-4 text-emerald-600" />}
             onClick={() => descargarCSV(datosReporte, `reporte-gerencial-scrap-${fechaFin}.csv`)}
           >
-            Exportar Excel
+            Exportar CSV
           </Button>
 
           <Button
@@ -257,7 +267,7 @@ export const ReportesPage: React.FC = () => {
       {/* Piezas por certificación */}
       <Card
         title="Cantidad por certificación"
-        subtitle="Agrupación por CertificacionId en dbo.Movimientos"
+        subtitle={`Periodo de datos representado: ${periodoDatosReporte}. Agrupación por CertificacionId en dbo.Movimientos.`}
       >
         <div className="h-64 w-full pt-2">
           <ResponsiveContainer width="100%" height="100%">
@@ -270,7 +280,10 @@ export const ReportesPage: React.FC = () => {
                 tickLine={false}
               />
               <Tooltip
-                formatter={(val: any) => [`${val} piezas`, 'Cantidad']}
+                formatter={(val: any) => [
+                  <span key="value" className="text-white">{val} piezas</span>,
+                  <span key="name" className="text-white">Cantidad</span>,
+                ]}
                 contentStyle={{
                   backgroundColor: '#0f172a',
                   borderColor: '#334155',
@@ -278,6 +291,8 @@ export const ReportesPage: React.FC = () => {
                   color: '#f8fafc',
                   fontSize: '12px',
                 }}
+                labelStyle={{ color: '#ffffff' }}
+                itemStyle={{ color: '#ffffff' }}
               />
               <Bar dataKey="piezas" fill="#3b82f6" radius={[6, 6, 0, 0]} />
             </BarChart>

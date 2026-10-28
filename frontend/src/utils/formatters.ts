@@ -82,7 +82,7 @@ export const descargarCSV = (datos: Movimiento[], nombreArchivo = 'reporte-scrap
 
 export const simularImpresionPDF = (titulo: string) => {
   const originalTitle = document.title;
-  document.title = `${titulo} - Magna MES Industrial Systems`;
+  document.title = `${titulo} - SCRAPControl`;
   window.print();
   document.title = originalTitle;
 };

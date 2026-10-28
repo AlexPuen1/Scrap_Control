@@ -2,16 +2,20 @@ import { Router } from 'express';
 import {
   getMovimientos,
   getMovimientoById,
-  getKPIs,
   getScrapPorLinea,
+  getRazones,
+  actualizarRazon,
   registrarDictamen,
+  getComparativaMensual,
 } from '../controllers/movimientosController.js';
 
 const router = Router();
 
 router.get('/', getMovimientos);
-router.get('/kpis', getKPIs);
+router.get('/comparativa-mensual', getComparativaMensual);
 router.get('/fallas-por-linea', getScrapPorLinea);
+router.get('/razones', getRazones);
+router.patch('/:id/razon', actualizarRazon);
 router.patch('/:id/dictamen', registrarDictamen);
 router.get('/:id', getMovimientoById);
 

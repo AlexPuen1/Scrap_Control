@@ -1,8 +1,8 @@
 # =====================================================================
-# SCRIPT DE INICIO Y ACTUALIZACIÓN UNIFICADA: SCRAP DASHBOARD INDUSTRIAL
+# SCRIPT DE INICIO Y ACTUALIZACIÓN UNIFICADA: SCRAPControl
 # =====================================================================
 Write-Host "======================================================================" -ForegroundColor Cyan
-Write-Host "   INICIANDO SUITE SCRAP DASHBOARD INDUSTRIAL (MES & SQL SERVER)" -ForegroundColor Cyan
+Write-Host "   INICIANDO SCRAPControl" -ForegroundColor Cyan
 Write-Host "======================================================================" -ForegroundColor Cyan
 
 # 1. Compilar y actualizar

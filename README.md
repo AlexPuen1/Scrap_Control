@@ -1,140 +1,91 @@
-# Sistema MES Industrial: SCRAP & Materials Movement Dashboard
+# SCRAPControl
 
-> Sistema corporativo frontend para control, consulta, trazabilidad, aprobación y seguimiento de movimientos de materiales no conformes y scrap en plantas de manufactura automotriz.
+**Una vista práctica para consultar y dar seguimiento a movimientos de Scrap.**
 
-Inspirado en los lineamientos visuales y de interacción de **SAP Fiori**, **Microsoft Fluent UI**, **Power BI** y sistemas **MES (Manufacturing Execution Systems)** de clase mundial (Magna International - Carrocerías & Estampado).
+SCRAPControl es una aplicación web interna que reúne información de movimientos registrados en la base corporativa **SOE**. Ayuda a los equipos a revisar qué ocurrió, cuándo, en qué certificación o línea, y qué razón está asociada con cada movimiento. También permite registrar un dictamen y corregir la razón cuando corresponda.
 
----
+> **En pocas palabras:** consulta información operativa, la organiza en listas y gráficas, y facilita revisar movimientos pendientes. No reemplaza los sistemas corporativos ni decide por sí misma qué debe aprobarse.
 
-## 🚀 Características Principales
+## ¿Para qué sirve?
 
-- **Dashboard Ejecutivo & Operativo:**
-  - KPIs en tiempo real: *Scrap Generado Hoy*, *Pendiente de Aprobar*, *Aprobado*, *Rechazado/Salvado* y *OEE Loss Rate*.
-  - Gráfica interactiva de área con gradiente de tendencia horaria contra límites de tolerancia admisible.
-  - Comparación de las cinco razones principales de Scrap mediante gráfica de barras horizontales.
-  - Distribución de incidencias acumuladas por línea de producción (L-01 a L-07).
-  - Modal para registro rápido de incidencias en piso de producción.
+- **Entender la situación del Scrap:** consultar cantidades y movimientos del periodo disponible, y observar su distribución por fecha, certificación, línea y razón.
+- **Encontrar registros:** buscar y filtrar movimientos para revisar sus datos y seguimiento.
+- **Dar seguimiento a pendientes:** revisar movimientos pendientes y registrar si se aprueban o rechazan, individualmente o en grupo.
+- **Mantener la razón asociada:** consultar las razones disponibles y corregir la razón de un movimiento cuando sea necesario.
+- **Preparar información para revisión:** consultar reportes en pantalla y exportar movimientos a un archivo CSV que puede abrirse en Excel.
 
-- **Auditoría y Registro General de Movimientos:**
-  - Tabla de alta densidad con las 12 columnas requeridas: *ID, MATNR (Material SAP), Fecha, Credencial, Movimiento, Cantidad, Salida, Retorno, Empleado, Línea, Almacén, Estatus*.
-  - Búsqueda en vivo multicriterio (por MATNR, empleado, ID, credencial o pieza).
-  - Filtros combinables por línea, estatus, tipo de movimiento y turno.
-  - Ordenamiento por columnas y paginación configurable (10, 25 o 50 registros).
-  - Exportación de la selección filtrada a archivo CSV real.
+La herramienta apoya la revisión y el seguimiento; **la interpretación de los resultados y las decisiones de negocio corresponden a las personas responsables**.
 
-- **Mesa Digital de Aprobaciones:**
-  - Interfaz diseñada específicamente para el rol de Supervisor de Calidad en planta.
-  - Tabla compacta con folio y fecha/hora de emisión, componente, razón, cantidad y acciones de dictamen visibles.
-  - Búsqueda de solicitudes pendientes por fecha/hora de emisión (`fecha_hora`) y filtro por certificación.
-  - **Aprobar** y **Denegar** abren la ficha completa del componente antes de solicitar el nombre del responsable y confirmar el dictamen.
-  - El backend guarda el estado, nombre capturado y fecha/hora del servidor en SQL Server; el nombre no comprueba la identidad del usuario.
+## ¿Cómo funciona?
 
-- **Catálogo CRUD de Motivos de Defecto:**
-  - Clasificación por categorías: *Scrap, Retrabajo en Línea, Calidad, Cuarentena, Calidad Reingreso, Metal Finish, Traspaleo, Impresión Parcial, Reingreso Parcial*.
-  - Códigos estandarizados, severidades (*Crítica, Alta, Media, Baja*), criterios de inspección y costos de referencia.
-  - Alta, edición, desactivación y eliminación interactiva con persistencia local.
-
-- **Fallas por línea:**
-  - Resume las piezas de movimientos tipo **Scrap** agrupadas por `Certificacion.LineaId`, relacionado con `Movimientos.CertificacionId`.
-  - Presenta gráfica de barras, número de movimientos y buscador; la consulta se ejecuta en SQL Server y limita los datos a 2025.
-
-- **Módulo de Reportes & Análisis Financiero:**
-  - Filtros cruzados por rango de fechas, línea de ensamble, turno y motivo específico.
-  - Tabla consolidada con desglose por Número de Parte (MATNR), volumen, costo total y porcentaje de contribución al scrap de planta.
-  - Generador de archivos **Excel (.csv)** con codificación UTF-8 BOM.
-  - Formato para **Imprimir / Guardar en PDF** con diseño corporativo y secciones de firmas.
-
-- **Ficha Técnica 360° y Trazabilidad IATF 16949:**
-  - Ficha individual de movimiento (`/movimientos/:id`) con orden de producción (OP), lote y centros de costo.
-  - **Marbete de Scrap:** Simulación de marbete físico viajero con código de barras y área para firma autorizada.
-  - **Timeline Cronológico:** Trazabilidad de hitos desde el reporte en terminal MES hasta el ajuste contable en SAP BAPI 551.
-
-- **Configuración y Parámetros de Planta:**
-  - Datos maestros de planta (*Planta Saltillo - Magna Body, Werks 1020*).
-  - Estado del conector SAP ERP (BAPI_GOODSMVT_CREATE movimiento 551).
-  - Conmutador de turnos activos (Turno 1, Turno 2, Turno 3).
-  - Modo Claro (SAP Fiori Standard) y Modo Oscuro (Industrial High Contrast).
-  - Botón de reinicio de datos mock a valores de fábrica.
-
----
-
-## 🛠️ Stack Tecnológico
-
-- **Framework:** [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
-- **Empaquetador:** [Vite 8](https://vite.dev/)
-- **Estilos:** [Tailwind CSS v4](https://tailwindcss.com/) (`@tailwindcss/vite`)
-- **Enrutamiento:** [React Router DOM v7](https://reactrouter.com/)
-- **Animaciones:** [Framer Motion](https://www.framer.com/motion/)
-- **Gráficas:** [Recharts](https://recharts.org/)
-- **Iconos:** [Lucide React](https://lucide.dev/)
-- **Movimientos:** lectura en vivo desde `SOE.dbo.Movimientos` mediante la API Node/Express. El resto de catálogos sigue usando datos locales.
-- **Acceso a la base:** autenticación y conexión configuradas en `BaseDeDatos/.env`; la consulta de movimientos es de lectura y la bandeja puede actualizar los campos de dictamen para aprobar o rechazar filas pendientes.
-- **Rango de datos actual:** las vistas consultan solo los movimientos de 2025 desde SQL Server. El tablero también indica explícitamente que muestra ese año.
-
----
-
-## 📂 Estructura del Repositorio
-
-```
-.
-├── Documentacion.md         # Documentación técnica exhaustiva del sistema
-├── memoria.md               # Memoria de arquitectura, contexto automotriz y decisiones UX
-├── Especificaciones.txt     # Requerimientos originales del proyecto
-├── README.md                # Presentación general y guía rápida
-├── .gitignore               # Exclusión de node_modules y compilados dist
-└── frontend/                # Código fuente de la aplicación React
-    ├── package.json
-    ├── vite.config.ts
-    ├── tsconfig.app.json
-    └── src/
-        ├── assets/          # Recursos gráficos y fuentes
-        ├── components/      # Componentes UI reutilizables (Badge, Button, Card, Modal, etc.)
-        ├── constants/       # Datos maestros de planta, líneas y turnos
-        ├── context/         # Estados globales reactivos (ScrapContext, ThemeContext)
-        ├── features/        # Módulos de funcionalidad
-        ├── hooks/           # Custom hooks para analítica
-        ├── layouts/         # Shell de la aplicación (Sidebar, TopHeader, MainLayout)
-        ├── mock/            # Dataset automotriz realista con 25+ registros
-        ├── pages/           # Vistas principales (Dashboard, Aprobaciones, Movimientos, etc.)
-        ├── services/        # Simulación de servicios asíncronos SAP ERP
-        ├── types/           # Interfaces TypeScript de dominio
-        └── utils/           # Formateadores, generador CSV e impresión PDF
+```text
+Información registrada en SOE
+            ↓
+SCRAPControl consulta y organiza los movimientos
+            ↓
+El equipo revisa listas, fichas, indicadores y reportes
+            ↓
+Cuando corresponde, registra un dictamen o corrige una razón
 ```
 
----
+La aplicación obtiene información mediante un servicio corporativo. Algunas pantallas consultan datos directamente para generar sus resúmenes; otras filtran o agrupan los registros que ya se cargaron. Los cambios de dictamen y de razón se guardan en la base corporativa, no solo en la pantalla.
 
-## ⚡ Instalación y Puesta en Marcha
+## ¿Qué encontrará en la aplicación?
 
-### Prerrequisitos
-- **Node.js** >= 20.x
-- **npm** >= 9.x
+| Sección | ¿Qué permite hacer? |
+|---|---|
+| **Panel principal** | Revisar indicadores y tendencias del periodo seleccionado. El periodo predeterminado se basa en los movimientos disponibles, no necesariamente en el día de hoy. |
+| **Movimientos** | Buscar, ordenar y filtrar los movimientos cargados; abrir su ficha y exportar los resultados a CSV. |
+| **Ficha del movimiento** | Consultar los datos disponibles del registro y, si hace falta, cambiar su razón por una opción válida o dejarla sin razón. |
+| **Aprobaciones** | Revisar movimientos pendientes, aplicar filtros y registrar un dictamen. También permite procesar una selección de pendientes. |
+| **Fallas por línea** | Consultar un resumen de cantidad y número de movimientos de Scrap por línea para un periodo reciente calculado por el sistema. |
+| **Comparación mensual** | Comparar el mes elegido con el mes calendario anterior en tendencias y desgloses por certificación, razón y línea. |
+| **Reportes** | Filtrar y agrupar los movimientos que ya están cargados para preparar una revisión y exportarlos. |
+| **Motivos y configuración** | Consultar referencias y opciones visuales de la aplicación. Estos datos y ajustes son locales; no actualizan catálogos corporativos. |
 
-### Pasos
-1. Clonar el repositorio:
-   ```bash
-   git clone https://github.com/alexteori14/PiezasDefectuosas.git
-   cd PiezasDefectuosas/frontend
-   ```
+## ¿Qué significa cada estado del dictamen?
 
-2. Instalar dependencias:
-   ```bash
-   npm install
-   ```
+- **Pendiente:** aún no se ha registrado un dictamen (`0`).
+- **Aprobado:** se registró aprobación (`1`).
+- **Rechazado:** se registró rechazo (`2`).
+- **Sin dictamen:** el registro no tiene un valor asignado.
 
-3. Iniciar el servidor en modo desarrollo:
-   ```bash
-   npm run dev
-   ```
-   Abrir en el navegador en [http://localhost:5173/](http://localhost:5173/).
+La aplicación permite registrar aprobación o rechazo en movimientos pendientes. En una operación por grupo, cada movimiento se procesa por separado: algunos pueden guardarse y otros fallar. La pantalla informa los que no se completaron para que puedan revisarse.
 
-4. Compilar para producción:
-   ```bash
-   npm run build
-   ```
+## Alcance y límites importantes
 
----
+| La aplicación sí… | La aplicación no… |
+|---|---|
+| Consulta movimientos y algunos datos relacionados desde SOE. | Crea movimientos nuevos ni sustituye el sistema donde se originan los registros. |
+| Presenta resúmenes, gráficas, filtros y exportaciones. | Garantiza que los datos disponibles incluyan todos los periodos o campos que un área necesita. |
+| Guarda cambios de dictamen y de razón en datos corporativos. | Determina si un movimiento debe aprobarse ni valida que quien captura tenga un rol autorizado. |
+| Permite revisar motivos en sus pantallas. | Sincroniza el catálogo local de «Motivos» con el catálogo corporativo usado para corregir razones. |
+| Muestra una comparación de periodos para facilitar el análisis. | Define por sí misma metas, límites aceptables, costos oficiales, OEE o causas raíz. |
 
-## 📖 Documentación Adicional
+**Antes de registrar un dictamen o cambiar una razón:** verifique que el movimiento sea el correcto y que el cambio esté autorizado según el proceso de su área. Estos cambios son persistentes; la aplicación no ofrece una función para deshacerlos. El nombre del responsable que se captura es un dato de registro, no una comprobación de identidad.
 
-- Para consultar el análisis funcional, contexto automotriz y decisiones de arquitectura, consulta [`memoria.md`](memoria.md).
-- Para el detalle técnico de componentes, props, modelo de datos y ciclo de vida, consulta [`Documentacion.md`](Documentacion.md).
+### Información que no debe interpretarse como dato oficial
+
+En esta versión no están conectados como operaciones corporativas los costos oficiales, OEE, historial completo, integración con SAP, creación de movimientos ni varios datos de personal o materiales. Algunos catálogos, notificaciones y ajustes son de demostración o se guardan localmente. **No utilice esos elementos como fuente oficial para decisiones financieras, de desempeño individual o de recursos humanos.**
+
+Los archivos CSV pueden incluir campos de la base que no se ven como columnas en la tabla, incluida la credencial. Comparta las exportaciones solo con personas autorizadas y siguiendo las políticas de manejo de información de la organización.
+
+## ¿Quién puede usar esta información?
+
+- **Gerentes y directivos:** revisar tendencias y distribuciones disponibles como apoyo para conversar sobre el proceso y solicitar análisis adicionales.
+- **Equipos operativos y personas revisoras:** localizar movimientos, consultar su ficha y dar seguimiento a pendientes conforme a las reglas internas.
+- **RH:** la aplicación no es un sistema de recursos humanos; no evalúa personas ni administra información laboral. Si una exportación contiene credenciales u otros datos identificables, debe manejarse con acceso restringido.
+
+Las gráficas describen los registros que la aplicación consultó. Una variación o concentración es una señal para analizar, **no una explicación de causa ni una conclusión automática sobre el desempeño de un área o una persona**.
+
+## Acceso y soporte técnico
+
+SCRAPControl está pensado para uso interno. Para que funcione, el equipo donde se ejecuta necesita acceso de red al servicio corporativo. La aplicación local no inicia sesión por sí sola ni comprueba permisos de gerente. En su estado actual, el backend tampoco autentica usuarios; por ello debe mantenerse en una red controlada y no exponerse públicamente sin que el área responsable implemente controles de acceso.
+
+La guía de instalación, configuración, endpoints, modelo de datos y comportamiento técnico está disponible en:
+
+- [Documentación técnica del sistema](Documentacion.md)
+- [Guía del frontend](frontend/README.md)
+- [Guía de acceso a datos](BaseDeDatos/ConexionBaseDatos.md)
+- [Diccionario de datos de movimientos](BaseDeDatos/Diccionario_Datos_Movimientos.md)
+- [Memoria de arquitectura y decisiones](memoria.md)

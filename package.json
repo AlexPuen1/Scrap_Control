@@ -1,7 +1,7 @@
 {
   "name": "scrap-dashboard-suite",
   "version": "1.0.0",
-  "description": "Sistema MES SCRAP Dashboard Industrial - Frontend & Backend Suite con integración a SQL Server (SSMS)",
+  "description": "Dashboard SCRAP con frontend y backend integrado mediante la API corporativa",
   "private": true,
   "scripts": {
     "dev": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
@@ -10,6 +10,7 @@
     "actualizar": "npm run install:all && npm run build",
     "iniciar": "npm run dev",
     "todo": "npm run build && npm run dev",
+    "test": "npm run test --prefix backend",
     "test:db": "npm run test:db --prefix backend",
     "start": "concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run start --prefix backend\" \"npm run preview --prefix frontend\""
   },

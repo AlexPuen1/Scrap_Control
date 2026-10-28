@@ -40,18 +40,6 @@ export interface MovimientoTipoCatalogo {
   activo: boolean;
 }
 
-/**
- * Representa una estación de certificación / impresión en dbo.Certificaciones
- */
-export interface CertificacionCatalogo {
-  id: number;
-  nombre: string;
-  linea?: string;
-  estacion?: string;
-  ubicacion?: string;
-  activo: boolean;
-}
-
 export interface Motivo {
   id: string;
   codigo: string;
@@ -77,6 +65,7 @@ export interface HitoHistorial {
 export interface MovimientoDB {
   id: number;
   CertificacionId: number;
+  LineaId?: number | null;
   MATNR: string;
   fecha_hora: string;
   credencial: string;
@@ -89,6 +78,7 @@ export interface MovimientoDB {
   procesado: number | null;
   aprobado: number | null;
   RazonId: number | null;
+  DescripcionRazon?: string | null;
   centro_costo: string | null;
   almacen: string | null;
   serial: string | null;
@@ -119,6 +109,7 @@ export interface Movimiento {
   procesado?: number; // procesado (int)
   aprobado: number | null; // aprobado (int: 0=Pendiente, 1=Aprobado, 2=Rechazado)
   razonId: number | null; // RazonId (int) -> dbo.EtiquetasCI
+  descripcionRazon?: string;
   motivoEspecifico: string; // Descripción de la Razón
   centroCosto?: string; // centro_costo (varchar 50)
   almacen: string; // almacen (varchar 50)
@@ -150,6 +141,32 @@ export interface ResumenScrapLinea {
   lineaId: number | null;
   movimientos: number;
   piezasScrap: number;
+}
+
+export interface ReporteScrapLinea {
+  periodo: { fechaInicio: string; fechaFin: string } | null;
+  datos: ResumenScrapLinea[];
+}
+
+export interface ComparativaMensualDato {
+  grafica: 'tendencia' | 'certificacion' | 'razon' | 'linea';
+  periodo: 'actual' | 'anterior';
+  categoria: string;
+  movimientos: number;
+  piezas: number;
+}
+
+export interface ComparativaMensual {
+  periodos: {
+    actual: { fechaInicio: string; fechaFin: string };
+    anterior: { fechaInicio: string; fechaFin: string };
+  };
+  datos: ComparativaMensualDato[];
+}
+
+export interface OpcionRazon {
+  id: number;
+  descripcion: string;
 }
 
 export interface LineaProduccion {

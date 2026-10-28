@@ -1,7 +1,7 @@
 @echo off
-TITLE SCRAP Dashboard MES Industrial - Suite Completa
+TITLE SCRAPControl - Control de Scrap
 echo ======================================================================
-echo    INICIANDO SUITE SCRAP DASHBOARD INDUSTRIAL (MES & SQL SERVER)
+echo    INICIANDO SCRAPControl
 echo ======================================================================
 echo 1. Verificando dependencias y compilacion...
 call npm run build

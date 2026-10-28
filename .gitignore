@@ -33,3 +33,7 @@ pnpm-debug.log*
 *.sw?
 .DS_Store
 Thumbs.db
+
+# Documentos privados/locales
+/memoria.md
+/Prompt.txt

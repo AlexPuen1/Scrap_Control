@@ -1,68 +1,104 @@
-# Diccionario de datos consultados
+# Diccionario de datos utilizado por SCRAPControl
 
-Este documento describe las tablas y columnas verificadas en la base configurada para la aplicación. La aplicación consulta los movimientos de 2025; no crea tablas ni importa catálogos con estos documentos.
+## Alcance y cautela
 
-La estructura se comprobó mediante metadatos de SQL Server (`sys.tables` y `sys.columns`). Los tamaños de `nvarchar` se expresan en caracteres; para otros tipos de texto, en bytes según SQL Server.
+Este documento describe los campos que consume o modifica la aplicación, no pretende ser el diccionario oficial del servidor. Los tipos y nulabilidad anotados se basan en la verificación previa documentada en el proyecto; confírmalos con el propietario del esquema antes de una migración. La última consulta de esquema no se repite al editar este documento.
+
+La ruta de datos es backend → API corporativa `POST /api/Utility/executeSQLCommand` → SQL Server solicitado `est04db` / base `SOE`. El navegador no consulta SQL directamente. La lista ordinaria lee `dbo.Movimientos`, relaciona certificación y añade la descripción de razón desde una vista. Para más detalle de conexión, consulta [`ConexionBaseDatos.md`](ConexionBaseDatos.md).
 
 ## `dbo.Movimientos`
 
-Tabla de movimientos consultada por el backend. La columna `id` es identidad. En la consulta de lista se conserva la fila original; el nombre del tipo de movimiento se agrega en el backend a partir del identificador.
+La consulta ordinaria obtiene `movimiento.*` y añade `LineaId` y `DescripcionRazon` calculados. En la lista predeterminada, el repositorio busca el máximo `fecha_hora`; filtra desde la fecha equivalente un mes antes hasta el día posterior a esa fecha máxima, con límite final exclusivo. Un rango explícito usa `fechaInicio` inclusiva y `fechaFin` exclusiva.
 
-| Columna | Tipo | NULL | Uso en la aplicación |
+| Columna física | Tipo documentado | Nulo | Uso en la aplicación |
 |---|---|---:|---|
-| `id` | `int` | No | Identificador del movimiento. |
-| `CertificacionId` | `int` | No | Identificador usado para relacionar el movimiento con `dbo.Certificacion.id`. |
-| `MATNR` | `varchar(50)` | No | Número de parte defectuosa. |
-| `fecha_hora` | `datetime` | No | Fecha y hora del movimiento; el rango predeterminado se filtra por esta columna. |
-| `credencial` | `varchar(50)` | No | Credencial reportada. |
-| `MovimientoTipoId` | `int` | No | Identificador del tipo de movimiento; el valor `1` se usa para filtrar Scrap. |
-| `cantidad` | `int` | No | Cantidad de piezas; se suma para los totales de Scrap. |
-| `salida` | `bit` | No | Campo presente en la fila consultada. |
-| `retorno` | `bit` | No | Campo presente en la fila consultada. |
-| `EmpleadoId` | `varchar(50)` | Sí | Campo disponible; su integración funcional está pendiente. |
-| `Empleado` | `varchar(250)` | Sí | Campo disponible; su integración funcional está pendiente. |
-| `procesado` | `int` | Sí | Campo presente en la fila consultada. |
-| `aprobado` | `int` | Sí | Estado consultado por la bandeja. El endpoint de dictamen existente también lo actualiza al confirmar. |
-| `RazonId` | `int` | Sí | Identificador de razón; la aplicación no consulta actualmente un catálogo en vivo de razones. |
-| `centro_costo` | `varchar(50)` | Sí | Campo conservado en la fila original; no integrado en las vistas actuales. |
-| `almacen` | `varchar(50)` | Sí | Almacén reportado. |
-| `serial` | `varchar(50)` | Sí | Serial del registro. |
-| `MATNR_FG` | `varchar(50)` | Sí | Número de parte del producto terminado. |
-| `nvAprobadoPor` | `nvarchar(200)` | Sí | Campo de dictamen; el endpoint existente lo actualiza al confirmar. |
-| `dtAprobado` | `datetime` | Sí | Fecha y hora de dictamen; el endpoint existente la establece con la hora de SQL Server. |
+| `id` | `int` | No | Identificador/fuente de rutas y folio. |
+| `CertificacionId` | `int` | No | Relación con `dbo.Certificacion.id`; se conserva en ficha, datos originales y CSV. No se muestra como columna en la lista principal. |
+| `MATNR` | `varchar(50)` | No | Número de parte principal; listado, búsqueda y reportes. |
+| `fecha_hora` | `datetime` | No | Fecha/hora del movimiento; determina periodos y orden temporal. |
+| `credencial` | `varchar(50)` | No | Se muestra en ficha técnica; no como columna de Movimientos. La búsqueda y CSV pueden incluirla. |
+| `MovimientoTipoId` | `int` | No | Identificador del tipo; `1` se interpreta como Scrap. El nombre se resuelve con un mapa local. |
+| `cantidad` | `int` | No | Cantidad registrada; se agrega para reportes y gráficas. |
+| `salida` | `bit` | No | Indicador original, visible en algunos detalles/revisión. |
+| `retorno` | `bit` | No | Indicador original, visible en algunos detalles/revisión. |
+| `EmpleadoId` | `varchar(50)` | Sí | Se conserva en datos originales/ficha de revisión; no se integra desde un directorio de empleados. |
+| `Empleado` | `varchar(250)` | Sí | Campo original; no se enriquece desde catálogo corporativo. |
+| `procesado` | `int` | Sí | Estado/campo original, sin flujo de procesamiento implementado en la app. |
+| `aprobado` | `int` | Sí | `0` pendiente; `1` aprobado; `2` rechazado; `NULL` sin dictamen/no integrado. |
+| `RazonId` | `int` | Sí | Identificador de razón. La descripción se obtiene de `dbo.vw_Scrap_PowerBI`; la ficha puede editar este campo. |
+| `centro_costo` | `varchar(50)` | Sí | Campo original. No se integra con catálogo ni cálculo de costo oficial. |
+| `almacen` | `varchar(50)` | Sí | Almacén presentado en lista/ficha cuando existe. |
+| `serial` | `varchar(50)` | Sí | Serial mostrado junto con ID y ficha; también se usa en búsquedas y marbete visual. |
+| `MATNR_FG` | `varchar(50)` | Sí | Número de parte de producto terminado, se presenta cuando existe. |
+| `nvAprobadoPor` | `nvarchar(200)` | Sí | Texto capturado en el formulario de dictamen; no es una identidad autenticada. |
+| `dtAprobado` | `datetime` | Sí | Fecha/hora asignada por SQL Server con `GETDATE()` al guardar el dictamen. |
+
+### Campos derivados (no físicos en `dbo.Movimientos`)
+
+| Campo de respuesta | Origen | Propósito |
+|---|---|---|
+| `LineaId` | `dbo.Certificacion.LineaId` mediante `Certificacion.id = Movimientos.CertificacionId` | Línea numérica asociada; puede ser `NULL` si no hay certificación relacionada. |
+| `DescripcionRazon` | `dbo.vw_Scrap_PowerBI.desc_Razon` asociado por `RazonId` y `MovimientoTipoId` | Descripción legible usada en tabla, ficha y selector. |
+| `MovimientoTipoNombre` | Mapa local en `MovimientosRepository` | Etiqueta de presentación; no proviene de una consulta a `dbo.MovimientoTipo`. |
+
+### Dictamen y edición
+
+La ruta individual actualiza campos del dictamen exclusivamente cuando `id` coincide y `aprobado = 0`. Para aprobar escribe 1; para rechazar escribe 2; además asigna `nvAprobadoPor` y `dtAprobado`. No modifica registros con `aprobado IS NULL`, 1 o 2. El nombre capturado no comprueba que quien lo escribió sea gerente o el empleado indicado.
+
+La edición de razón solo escribe `RazonId`. Las opciones no son texto libre: el backend las valida contra el tipo del movimiento en `dbo.vw_Scrap_PowerBI`. El valor `null` limpia la razón. Ambas operaciones escriben datos reales y el backend no autentica usuarios.
 
 ## `dbo.Certificacion`
 
-Tabla consultada para determinar la línea asociada a cada movimiento. El endpoint `GET /api/movimientos/fallas-por-linea` enlaza `Movimientos.CertificacionId` con `Certificacion.id` y agrupa por `LineaId`.
+Se usa para relacionar movimiento con línea. El reporte por línea filtra `MovimientoTipoId = 1`, calcula periodo basado en `MAX(Movimientos.fecha_hora)`, cuenta movimientos y suma `cantidad` agrupando por `LineaId`.
 
-| Columna | Tipo | NULL | Uso en la aplicación |
+| Columna física | Tipo documentado | Nulo | Uso |
 |---|---|---:|---|
-| `id` | `int` | No | Identificador de certificación; identidad en la tabla observada. |
-| `LineaId` | `int` | No | Identificador de línea usado para agrupar las piezas Scrap. |
-| `fecha` | `datetime` | No | No utilizado por el reporte actual. |
-| `turno` | `int` | No | No utilizado por el reporte actual. |
-| `material` | `varchar(50)` | No | No utilizado por el reporte actual. |
-| `permite_autorizacion` | `bit` | No | No utilizado por el reporte actual. |
-| `terminado` | `bit` | No | No utilizado por el reporte actual. |
-| `credencial_inicio` | `varchar(50)` | No | No utilizado por el reporte actual. |
-| `fecha_inicio` | `datetime` | No | No utilizado por el reporte actual. |
-| `fecha_fin` | `datetime` | Sí | No utilizado por el reporte actual. |
-| `notificado_email` | `bit` | Sí | No utilizado por el reporte actual. |
-| `notificado_phone` | `bit` | Sí | No utilizado por el reporte actual. |
-| `SupervisorId` | `varchar(50)` | Sí | No utilizado por el reporte actual. |
-| `Supervisor` | `varchar(250)` | Sí | No utilizado por el reporte actual. |
-| `lock` | `bit` | No | No utilizado por el reporte actual. |
+| `id` | `int` | No | Clave relacionada con `Movimientos.CertificacionId`. |
+| `LineaId` | `int` | No | Identificador de línea. La interfaz solo muestra «Línea N»; no consulta nombre descriptivo. |
+| `fecha` | `datetime` | No | No se usa para establecer el periodo del reporte. |
+| `turno` | `int` | No | No se usa como filtro SQL del reporte. |
+| `material` | `varchar(50)` | No | No se usa para las vistas actuales. |
+| `permite_autorizacion` | `bit` | No | No se usa para dictaminar movimientos. |
+| `terminado` | `bit` | No | No se usa en los reportes actuales. |
+| `credencial_inicio` | `varchar(50)` | No | No se usa para identificar al usuario actual. |
+| `fecha_inicio` | `datetime` | No | No se usa para el periodo de los agregados. |
+| `fecha_fin` | `datetime` | Sí | No se usa para el periodo de los agregados. |
+| `notificado_email` | `bit` | Sí | No conectado a notificaciones de la aplicación. |
+| `notificado_phone` | `bit` | Sí | No conectado a notificaciones de la aplicación. |
+| `SupervisorId` | `varchar(50)` | Sí | No se usa como autorización. |
+| `Supervisor` | `varchar(250)` | Sí | No se usa como identidad autenticada. |
+| `lock` | `bit` | No | No usado por la aplicación. |
 
-El ID de línea se muestra como valor numérico. No se documenta aquí un nombre de línea porque esta consulta no resuelve un catálogo de nombres de líneas.
+La consulta utiliza `LEFT JOIN`; por ello puede producir un grupo `lineaId = NULL` para movimientos sin coincidencia. El reporte devuelve los límites (`fechaInicio`, `fechaFin`) empleados.
 
-## `dbo.MovimientoTipo`
+## `dbo.vw_Scrap_PowerBI` y catálogos
 
-El backend asigna el nombre mostrado a partir de `MovimientoTipoId` con un mapa local de tipos. La tabla tiene las columnas `id int NOT NULL`, `nombre varchar(50) NOT NULL` y `descripcion varchar(500) NOT NULL`; no se consulta como catálogo en vivo por las pantallas actuales.
+La vista `dbo.vw_Scrap_PowerBI` es la fuente SQL para las descripciones de razón. La aplicación utiliza:
 
-## Alcance y límites
+| Campo de vista | Uso |
+|---|---|
+| `RAZONid` | Asociación con `dbo.Movimientos.RazonId`. |
+| `desc_Razon` | Texto mostrado como descripción. |
+| `MovimientoTipoId` | Filtrado de razones válidas para el tipo del movimiento. |
 
-- El backend filtra la lista predeterminada con `fecha_hora >= '20250101' AND fecha_hora < '20260101'`, en SQL Server.
-- El reporte de fallas suma `cantidad` para `MovimientoTipoId = 1` y agrupa por `Certificacion.LineaId`.
-- Las razones se muestran por `RazonId`; sus descripciones provienen de un catálogo local, no de una lectura en vivo de `dbo.EtiquetasCI`.
-- La mayoría de las operaciones son consultas. La bandeja de aprobación conserva una operación de escritura para los campos de dictamen; véase `ConexionBaseDatos.md`.
-- Los valores NULL y los campos que no se usan no se reemplazan por datos inventados.
+El selector agrupa por `RAZONid`, ignora descripciones nulas/vacías y muestra el texto. Antes de guardar, backend vuelve a validar el ID. `dbo.EtiquetasCI` no existe en la base consultada anteriormente, por lo que no debe documentarse como fuente activa.
+
+`dbo.MovimientoTipo` tampoco se consulta como catálogo en vivo; las etiquetas se resuelven mediante un mapa local del repositorio y opciones del frontend. El módulo **Motivos** presenta un catálogo local/de referencia y no actualiza ni esta vista ni otro catálogo SQL.
+
+## Cálculos e interpretación
+
+- Scrap se identifica por `MovimientoTipoId = 1`.
+- El KPI «Piezas Scrap» suma `cantidad` para tipo 1 en el conjunto cargado, no necesariamente solo el día actual.
+- Pendientes/aprobados/rechazados del Dashboard cuentan estados del periodo actual.
+- `GET /api/movimientos/fallas-por-linea` calcula su agregado en SQL y no depende del rango del Dashboard.
+- `/api/movimientos/comparativa-mensual` contrasta el mes calendario seleccionado con el anterior. Tendencia, razón y línea limitan a Scrap tipo 1; certificación incluye todos los tipos.
+- La comparación mensual resume el máximo observado por métrica y periodo en sus tarjetas; las barras distinguen visualmente mes anterior y mes seleccionado, y los valores del tooltip son blancos. El máximo no es un umbral de riesgo ni una clasificación oficial de calidad.
+- Reportes agrupa y filtra sobre movimientos ya cargados. Su fecha hasta es inclusiva en el navegador.
+- Costos se muestran como cero/locales cuando no hay fuente oficial integrada; no usarlos para contabilidad.
+- La exportación CSV usa los valores originales de la fila y puede incluir campos no visibles en la tabla, como `credencial`.
+
+## Evidencia de consultas históricas
+
+Una consulta previa al ambiente de desarrollo reportó para un filtro de 2025: 35,068 movimientos, 55 grupos de línea y 15,655 piezas Scrap. Estos valores dependen del ambiente y del instante de consulta; no son constantes ni validan la carga actual. La última fecha máxima registrada históricamente en `memoria.md` fue `2026-05-26T16:48:48.573`; se requiere consultar la API para conocer la fecha más reciente actual.
+
+El 28 de octubre de 2026 se validaron lecturas en el ambiente de desarrollo: 2,894 movimientos en la ventana predeterminada, 4 grupos en el reporte por línea, 57 opciones de razón Scrap y 805 filas agregadas para abril/mayo de 2026. Son conteos de prueba, no datos del diccionario ni valores permanentes. Las escrituras válidas no se probaron en la base real.

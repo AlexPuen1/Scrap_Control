@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -11,13 +11,90 @@ import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
 import { simularImpresionPDF } from '../utils/formatters';
+import { ScrapService } from '../services/scrapService';
+import type { OpcionRazon } from '../types';
 
 export const MovimientoDetallePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { movimientos } = useScrap();
+  const { movimientos, actualizarRazonMovimiento } = useScrap();
+  const [catalogoRazones, setCatalogoRazones] = useState<{
+    movimientoTipoId: number;
+    opciones: OpcionRazon[];
+    error: string | null;
+  } | null>(null);
+  const [borradorRazon, setBorradorRazon] = useState<{ movimientoId: string; valor: string } | null>(null);
+  const [guardandoRazon, setGuardandoRazon] = useState(false);
+  const [errorGuardarRazon, setErrorGuardarRazon] = useState<string | null>(null);
 
   const movimiento = movimientos.find((m) => m.id === id || m.serial === id);
+  const movimientoTipoId = movimiento?.movimientoTipoId;
+  const movimientoId = movimiento?.id;
+
+  useEffect(() => {
+    if (movimientoTipoId === undefined) return;
+    let vigente = true;
+    ScrapService.obtenerRazones(movimientoTipoId)
+      .then((opciones) => {
+        if (vigente) {
+          setCatalogoRazones({ movimientoTipoId, opciones, error: null });
+        }
+      })
+      .catch((errorCarga: unknown) => {
+        if (vigente) {
+          setCatalogoRazones({
+            movimientoTipoId,
+            opciones: [],
+            error: errorCarga instanceof Error ? errorCarga.message : 'No se pudieron cargar las razones.',
+          });
+        }
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [movimientoTipoId]);
+
+  const catalogoActual = catalogoRazones?.movimientoTipoId === movimientoTipoId ? catalogoRazones : null;
+  const razonesDisponibles = catalogoActual?.opciones ?? [];
+  const errorRazon = catalogoActual?.error ?? null;
+  const cargandoRazones = movimientoTipoId !== undefined
+    && catalogoActual === null;
+  const borradorActual = borradorRazon && borradorRazon.movimientoId === movimientoId
+    ? borradorRazon.valor
+    : null;
+  const razonActualNoDisponible = Boolean(
+    movimiento?.razonId !== null
+    && movimiento?.razonId !== undefined
+    && !cargandoRazones
+    && !razonesDisponibles.some((razon) => razon.id === movimiento.razonId),
+  );
+  const razonSeleccionada = borradorActual
+    ?? (razonActualNoDisponible
+      ? '__actual__'
+      : movimiento?.razonId === null || movimiento?.razonId === undefined ? '' : String(movimiento.razonId));
+  const razonModificada = Boolean(
+    movimiento
+    && razonSeleccionada !== '__actual__'
+    && (razonSeleccionada === ''
+      ? movimiento.razonId !== null
+      : Number(razonSeleccionada) !== movimiento.razonId),
+  );
+  const guardarRazon = async () => {
+    if (!movimiento || razonSeleccionada === '__actual__') return;
+    setGuardandoRazon(true);
+    setErrorGuardarRazon(null);
+    try {
+      await actualizarRazonMovimiento(
+        movimiento.id,
+        razonSeleccionada === '' ? null : Number(razonSeleccionada),
+      );
+      setBorradorRazon({ movimientoId: movimiento.id, valor: razonSeleccionada });
+    } catch (error) {
+      setErrorGuardarRazon(error instanceof Error ? error.message : 'No se pudo actualizar la razón.');
+    } finally {
+      setGuardandoRazon(false);
+    }
+  };
 
   if (!movimiento) {
     return (
@@ -118,10 +195,10 @@ export const MovimientoDetallePage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Columna Izquierda: Ficha Técnica + Estructura de Base de Datos */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Card: Correspondencia directa con tabla dbo.Movimientos */}
+          {/* Card: Ficha técnica con campos del movimiento */}
           <Card
-            title="Estructura de Base de Datos (dbo.Movimientos)"
-            subtitle="Representación exacta de las columnas de SQL Server Management Studio"
+            title="Ficha técnica del movimiento"
+            subtitle="Identificación del componente y datos asociados de dbo.Movimientos"
           >
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
@@ -130,11 +207,21 @@ export const MovimientoDetallePage: React.FC = () => {
               </div>
 
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">Serial (varchar 50)</span>
+                <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{movimiento.serial || 'Sin serial'}</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">Credencial (varchar 50)</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{movimiento.credencial || 'Sin credencial'}</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
                 <span className="text-[10px] text-slate-400 block font-mono">CertificacionId (FK)</span>
                 <span className="font-mono font-bold text-slate-800 dark:text-slate-100">
                   {movimiento.certificacionId}
                 </span>
-                <span className="text-[10px] text-slate-400 block truncate">{movimiento.certificacionNombre}</span>
+                <span className="text-[10px] text-slate-400 block truncate">{movimiento.linea}</span>
               </div>
 
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
@@ -155,11 +242,6 @@ export const MovimientoDetallePage: React.FC = () => {
               </div>
 
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
-                <span className="text-[10px] text-slate-400 block font-mono">credencial (varchar 50)</span>
-                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{movimiento.credencial}</span>
-              </div>
-
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
                 <span className="text-[10px] text-slate-400 block font-mono">MovimientoTipoId (FK)</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
                   {movimiento.movimientoTipoId} ({movimiento.movimientoTipo})
@@ -174,10 +256,10 @@ export const MovimientoDetallePage: React.FC = () => {
               </div>
 
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
-                <span className="text-[10px] text-slate-400 block font-mono">RazonId (EtiquetasCI)</span>
+                <span className="text-[10px] text-slate-400 block">Razón del movimiento</span>
                 <div className="flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
                   <Tag className="w-3 h-3" />
-                  <span>{movimiento.razonId ?? 'Sin razón'}</span>
+                  <span>{movimiento.descripcionRazon || 'Sin descripción disponible'}</span>
                 </div>
               </div>
 
@@ -187,8 +269,8 @@ export const MovimientoDetallePage: React.FC = () => {
               </div>
 
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
-                <span className="text-[10px] text-slate-400 block font-mono">serial (varchar 50)</span>
-                <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{movimiento.serial}</span>
+                <span className="text-[10px] text-slate-400 block font-mono">Línea de producción</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{movimiento.linea || 'Sin línea asignada'}</span>
               </div>
 
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
@@ -221,6 +303,53 @@ export const MovimientoDetallePage: React.FC = () => {
                   {movimiento.dtAprobado || 'Pendiente'}
                 </span>
               </div>
+            </div>
+            <div className="mt-5 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+              <label htmlFor="razon-movimiento" className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
+                Corregir razón del movimiento
+              </label>
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                Elige una descripción del catálogo disponible para este tipo de movimiento.
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <select
+                  id="razon-movimiento"
+                  value={razonSeleccionada}
+                  onChange={(event) => {
+                    if (!movimiento) return;
+                    setBorradorRazon({ movimientoId: movimiento.id, valor: event.target.value });
+                    setErrorGuardarRazon(null);
+                  }}
+                  disabled={cargandoRazones || guardandoRazon}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                >
+                  <option value="">Sin razón</option>
+                  {razonActualNoDisponible && (
+                    <option value="__actual__" disabled>Razón actual sin descripción disponible</option>
+                  )}
+                  {razonesDisponibles.map((razon) => (
+                    <option key={razon.id} value={String(razon.id)}>{razon.descripcion}</option>
+                  ))}
+                </select>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={!razonModificada || cargandoRazones || guardandoRazon || Boolean(errorRazon)}
+                  onClick={() => void guardarRazon()}
+                >
+                  {guardandoRazon ? 'Guardando…' : 'Guardar razón'}
+                </Button>
+              </div>
+              {(errorRazon || errorGuardarRazon) && (
+                <p role="alert" className="mt-2 text-xs text-rose-600 dark:text-rose-400">
+                  {errorRazon || errorGuardarRazon}
+                </p>
+              )}
+              {razonActualNoDisponible && !errorRazon && (
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                  La razón actual no tiene descripción en el catálogo; selecciona una opción válida o «Sin razón».
+                </p>
+              )}
             </div>
           </Card>
 
@@ -304,13 +433,17 @@ export const MovimientoDetallePage: React.FC = () => {
                   <span className="font-bold">ID {movimiento.certificacionId}</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-slate-500">Línea:</span>
+                  <span className="font-bold">{movimiento.linea || 'Sin línea asignada'}</span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-slate-500">Tipo:</span>
                   <span className="font-bold">{movimiento.movimientoTipoId} - {movimiento.movimientoTipo}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Razón (Falla):</span>
                   <span className="font-bold text-amber-600 dark:text-amber-400">
-                    {movimiento.razonId ?? 'Sin razón'}
+                    {movimiento.razonId === null ? 'Sin razón' : movimiento.descripcionRazon || 'Razón sin descripción disponible'}
                   </span>
                 </div>
                 <div className="flex justify-between">

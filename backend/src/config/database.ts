@@ -1,12 +1,8 @@
-/**
- * Configuración del Modelo de Base de Datos SQL Server (SSMS).
- * Integra la infraestructura de conexión de database.connection.ts
- */
+/** Estado de acceso a los datos consultados mediante la API corporativa. */
 
 import {
   obtenerEstadoConexion,
   conectarSQLServer,
-  obtenerPool,
   probarConexionSQLServer,
 } from './database.connection.js';
 
@@ -25,7 +21,7 @@ export function getDbStatus(): DbConfigInfo {
     motor: 'SQL Server',
     tablaPrincipal: 'dbo.Movimientos',
     tablasRelacionadas: ['dbo.MovimientoTipo', 'dbo.EtiquetasCI', 'dbo.Certificacion'],
-    modo: `Conexión ${conexion.autenticacion} configurada`,
+    modo: `Acceso mediante ${conexion.autenticacion}`,
     rutaScripts: 'BaseDeDatos/',
     archivoConexion: 'BaseDeDatos/.env',
   };
@@ -42,6 +38,5 @@ export async function connectToDatabase() {
 export {
   obtenerEstadoConexion,
   conectarSQLServer,
-  obtenerPool,
   probarConexionSQLServer,
 };

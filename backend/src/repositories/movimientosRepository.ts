@@ -1,5 +1,14 @@
-import { obtenerPool } from '../config/database.connection.js';
-import type { MovimientoDB, MovimientoDetalleDTO, FiltrosMovimientosQuery, ResumenScrapLineaDB } from '../types/index.js';
+import { actualizarDictamenSQL, actualizarRazonSQL, consultarSQL } from '../config/database.connection.js';
+import type {
+  MovimientoDB,
+  MovimientoDetalleDTO,
+  FiltrosMovimientosQuery,
+  ResumenScrapLineaDB,
+  ResumenScrapLineaReporte,
+  ComparativaMensualDB,
+  ComparativaMensualReporte,
+  OpcionRazonDB,
+} from '../types/index.js';
 
 const NOMBRES_TIPOS_MOVIMIENTO: Record<number, string> = {
   1: 'Scrap',
@@ -44,13 +53,34 @@ function aplicarFiltros(movimientos: MovimientoDetalleDTO[], filtros: FiltrosMov
 }
 
 export class MovimientosRepository {
-  async obtenerScrapPorLinea(): Promise<ResumenScrapLineaDB[]> {
-    const pool = await obtenerPool();
-    if (!pool) {
-      throw new Error('No hay conexión activa con SQL Server.');
+  async obtenerRazones(movimientoTipoId: number): Promise<OpcionRazonDB[]> {
+    if (!Number.isSafeInteger(movimientoTipoId) || movimientoTipoId < 1) {
+      throw new Error('El tipo de movimiento no es válido.');
     }
 
-    const resultado = await pool.request().query<ResumenScrapLineaDB>(`
+    return consultarSQL<OpcionRazonDB>(`
+      SELECT RAZONid AS id, MAX(LTRIM(RTRIM(desc_Razon))) AS descripcion
+      FROM dbo.vw_Scrap_PowerBI
+      WHERE MovimientoTipoId = ${movimientoTipoId}
+        AND RAZONid IS NOT NULL
+        AND NULLIF(LTRIM(RTRIM(desc_Razon)), '') IS NOT NULL
+      GROUP BY RAZONid
+      ORDER BY descripcion
+    `);
+  }
+
+  async obtenerScrapPorLinea(): Promise<ResumenScrapLineaReporte> {
+    const [periodo] = await consultarSQL<{ fechaInicio: string | null; fechaFin: string | null }>(`
+      SELECT
+        CONVERT(char(10), CONVERT(date, DATEADD(MONTH, -1, MAX(fecha_hora))), 23) AS fechaInicio,
+        CONVERT(char(10), CONVERT(date, MAX(fecha_hora)), 23) AS fechaFin
+      FROM dbo.Movimientos
+    `);
+    if (!periodo?.fechaInicio || !periodo.fechaFin) {
+      return { periodo: null, datos: [] };
+    }
+
+    const resultado = await consultarSQL<ResumenScrapLineaDB>(`
       SELECT
         certificacion.LineaId AS lineaId,
         COUNT_BIG(*) AS movimientos,
@@ -58,57 +88,154 @@ export class MovimientosRepository {
       FROM dbo.Movimientos AS movimiento
       LEFT JOIN dbo.Certificacion AS certificacion
         ON certificacion.id = movimiento.CertificacionId
-      WHERE movimiento.fecha_hora >= '20250101'
-        AND movimiento.fecha_hora < '20260101'
+      WHERE movimiento.fecha_hora >= '${periodo.fechaInicio}'
+        AND movimiento.fecha_hora < DATEADD(DAY, 1, CONVERT(date, '${periodo.fechaFin}', 23))
         AND movimiento.MovimientoTipoId = 1
       GROUP BY certificacion.LineaId
       ORDER BY piezasScrap DESC
     `);
 
-    return resultado.recordset.map((fila) => ({
-      lineaId: fila.lineaId,
-      movimientos: Number(fila.movimientos),
-      piezasScrap: Number(fila.piezasScrap),
-    }));
+    return {
+      periodo: { fechaInicio: periodo.fechaInicio, fechaFin: periodo.fechaFin },
+      datos: resultado.map((fila) => ({
+        lineaId: fila.lineaId,
+        movimientos: Number(fila.movimientos),
+        piezasScrap: Number(fila.piezasScrap),
+      })),
+    };
+  }
+
+  async obtenerComparativaMensual(
+    inicioAnterior: string,
+    inicioActual: string,
+    finActual: string,
+  ): Promise<ComparativaMensualReporte> {
+    const consulta = (grafica: string, agrupacion: string, filtroScrap = '') => `
+      SELECT
+        '${grafica}' AS grafica,
+        CASE WHEN movimiento.fecha_hora >= '${inicioActual}' THEN 'actual' ELSE 'anterior' END AS periodo,
+        ${agrupacion} AS categoria,
+        COUNT_BIG(*) AS movimientos,
+        SUM(CONVERT(BIGINT, movimiento.cantidad)) AS piezas
+      FROM dbo.Movimientos AS movimiento
+      LEFT JOIN dbo.Certificacion AS certificacion
+        ON certificacion.id = movimiento.CertificacionId
+      WHERE movimiento.fecha_hora >= '${inicioAnterior}'
+        AND movimiento.fecha_hora < '${finActual}'
+        ${filtroScrap}
+      GROUP BY
+        CASE WHEN movimiento.fecha_hora >= '${inicioActual}' THEN 'actual' ELSE 'anterior' END,
+        ${agrupacion}
+    `;
+
+    const filas = await consultarSQL<ComparativaMensualDB>(`
+      SELECT grafica, periodo, categoria, movimientos, piezas
+      FROM (
+        ${consulta('tendencia', "CONVERT(char(10), CONVERT(date, movimiento.fecha_hora), 23)", 'AND movimiento.MovimientoTipoId = 1')}
+        UNION ALL
+        ${consulta('certificacion', 'CONVERT(varchar(32), movimiento.CertificacionId)')}
+        UNION ALL
+        ${consulta('razon', "COALESCE(CONVERT(varchar(32), movimiento.RazonId), 'Sin razon')", 'AND movimiento.MovimientoTipoId = 1')}
+        UNION ALL
+        ${consulta('linea', "COALESCE(CONVERT(varchar(32), certificacion.LineaId), 'Sin linea asignada')", 'AND movimiento.MovimientoTipoId = 1')}
+      ) AS comparativa
+      ORDER BY grafica, periodo, piezas DESC
+    `);
+
+    const restarUnDia = (fecha: string) => {
+      const [anio, mes, dia] = fecha.split('-').map(Number);
+      return new Date(Date.UTC(anio, mes - 1, dia - 1)).toISOString().slice(0, 10);
+    };
+
+    return {
+      periodos: {
+        actual: { fechaInicio: inicioActual, fechaFin: restarUnDia(finActual) },
+        anterior: { fechaInicio: inicioAnterior, fechaFin: restarUnDia(inicioActual) },
+      },
+      datos: filas.map((fila) => ({
+        ...fila,
+        movimientos: Number(fila.movimientos),
+        piezas: Number(fila.piezas),
+      })),
+    };
   }
 
   async listar(filtros: FiltrosMovimientosQuery = {}): Promise<MovimientoDetalleDTO[]> {
-    const pool = await obtenerPool();
-    if (!pool) {
-      throw new Error('No hay conexión activa con SQL Server.');
-    }
-
-    const solicitud = pool.request();
     let filtroFecha: string;
     if (filtros.fechaInicio && filtros.fechaFin) {
-      solicitud.input('fechaInicio', filtros.fechaInicio);
-      solicitud.input('fechaFin', filtros.fechaFin);
-      filtroFecha = '[fecha_hora] >= @fechaInicio AND [fecha_hora] < @fechaFin';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(filtros.fechaInicio) || !/^\d{4}-\d{2}-\d{2}$/.test(filtros.fechaFin)) {
+        throw new Error('El rango de fechas no tiene un formato válido.');
+      }
+      filtroFecha = `[fecha_hora] >= '${filtros.fechaInicio}' AND [fecha_hora] < '${filtros.fechaFin}'`;
     } else {
       filtroFecha = `
-        [fecha_hora] >= '20250101'
-        AND [fecha_hora] < '20260101'
+        movimiento.fecha_hora >= CONVERT(date, DATEADD(MONTH, -1, ultimo.fechaMaxima))
+        AND movimiento.fecha_hora < DATEADD(DAY, 1, CONVERT(date, ultimo.fechaMaxima))
       `;
     }
 
-    const resultado = await solicitud.query<MovimientoDB>(
-      `SELECT * FROM dbo.Movimientos WHERE ${filtroFecha} ORDER BY [id] DESC`
+    const resultado = await consultarSQL<MovimientoDetalleDTO>(
+      `SELECT movimiento.*, certificacion.LineaId AS LineaId,
+              (SELECT TOP 1 NULLIF(LTRIM(RTRIM(catalogo.desc_Razon)), '')
+               FROM dbo.vw_Scrap_PowerBI AS catalogo
+               WHERE catalogo.MovimientoTipoId = movimiento.MovimientoTipoId
+                 AND catalogo.RAZONid = movimiento.RazonId
+                 AND catalogo.desc_Razon IS NOT NULL) AS DescripcionRazon
+       FROM dbo.Movimientos AS movimiento
+       LEFT JOIN dbo.Certificacion AS certificacion
+         ON certificacion.id = movimiento.CertificacionId
+       ${filtros.fechaInicio && filtros.fechaFin ? '' : `
+       CROSS JOIN (
+         SELECT MAX(fecha_hora) AS fechaMaxima
+         FROM dbo.Movimientos
+       ) AS ultimo`}
+       WHERE ${filtroFecha}
+       ORDER BY movimiento.[id] DESC`
     );
-    return aplicarFiltros(resultado.recordset.map(enriquecerMovimiento), filtros);
+    return aplicarFiltros(resultado.map(enriquecerMovimiento), filtros);
   }
 
   async obtenerPorId(id: number): Promise<MovimientoDetalleDTO | null> {
-    const pool = await obtenerPool();
-    if (!pool) {
-      throw new Error('No hay conexión activa con SQL Server.');
+    if (!Number.isSafeInteger(id)) {
+      throw new Error('El identificador del movimiento no es válido.');
+    }
+    const resultado = await consultarSQL<MovimientoDetalleDTO>(`
+      SELECT movimiento.*, certificacion.LineaId AS LineaId,
+             (SELECT TOP 1 NULLIF(LTRIM(RTRIM(catalogo.desc_Razon)), '')
+              FROM dbo.vw_Scrap_PowerBI AS catalogo
+              WHERE catalogo.MovimientoTipoId = movimiento.MovimientoTipoId
+                AND catalogo.RAZONid = movimiento.RazonId
+                AND catalogo.desc_Razon IS NOT NULL) AS DescripcionRazon
+      FROM dbo.Movimientos AS movimiento
+      LEFT JOIN dbo.Certificacion AS certificacion
+        ON certificacion.id = movimiento.CertificacionId
+      WHERE movimiento.[id] = ${id}
+    `);
+    const movimiento = resultado[0];
+    return movimiento ? enriquecerMovimiento(movimiento) : null;
+  }
+
+  async actualizarRazon(
+    id: number,
+    razonId: number | null,
+  ): Promise<{ estado: 'actualizado'; movimiento: MovimientoDetalleDTO } | { estado: 'no-encontrado' } | { estado: 'razon-invalida' }> {
+    const movimientoActual = await this.obtenerPorId(id);
+    if (!movimientoActual) return { estado: 'no-encontrado' };
+
+    if (razonId !== null) {
+      const opciones = await this.obtenerRazones(movimientoActual.MovimientoTipoId);
+      if (!opciones.some((opcion) => opcion.id === razonId)) {
+        return { estado: 'razon-invalida' };
+      }
     }
 
-    const resultado = await pool
-      .request()
-      .input('id', id)
-      .query<MovimientoDB>('SELECT * FROM dbo.Movimientos WHERE [id] = @id');
-    const movimiento = resultado.recordset[0];
-    return movimiento ? enriquecerMovimiento(movimiento) : null;
+    await actualizarRazonSQL(id, razonId);
+    const movimiento = await this.obtenerPorId(id);
+    if (!movimiento) return { estado: 'no-encontrado' };
+    if (movimiento.RazonId !== razonId) {
+      throw new Error('No se pudo confirmar la actualización de la razón.');
+    }
+    return { estado: 'actualizado', movimiento };
   }
 
   async registrarDictamen(
@@ -120,56 +247,17 @@ export class MovimientosRepository {
     | { estado: 'no-encontrado' }
     | { estado: 'ya-dictaminado' }
   > {
-    const pool = await obtenerPool();
-    if (!pool) {
-      throw new Error('No hay conexión activa con SQL Server.');
+    const filasAfectadas = await actualizarDictamenSQL(id, aprobado, aprobadoPor);
+    const movimiento = await this.obtenerPorId(id);
+    if (!movimiento) return { estado: 'no-encontrado' };
+
+    if (filasAfectadas === 0) return { estado: 'ya-dictaminado' };
+    if (filasAfectadas < 0 && (movimiento.aprobado !== aprobado || movimiento.nvAprobadoPor !== aprobadoPor)) {
+      return { estado: 'ya-dictaminado' };
     }
-
-    const resultado = await pool.request()
-      .input('id', id)
-      .input('aprobado', aprobado)
-      .input('aprobadoPor', aprobadoPor)
-      .query<MovimientoDB & { actualizado: number }>(`
-        SET NOCOUNT ON;
-        DECLARE @actualizado TABLE (id INT NOT NULL);
-
-        UPDATE dbo.Movimientos
-        SET aprobado = @aprobado,
-            nvAprobadoPor = @aprobadoPor,
-            dtAprobado = GETDATE()
-        OUTPUT INSERTED.id INTO @actualizado (id)
-        WHERE id = @id AND aprobado = 0
-
-        SELECT
-          CASE WHEN EXISTS (SELECT 1 FROM @actualizado) THEN 1 ELSE 0 END AS actualizado,
-          movimiento.*
-        FROM dbo.Movimientos AS movimiento
-        WHERE movimiento.id = @id
-      `);
-
-    const fila = resultado.recordset[0];
-    if (fila?.actualizado === 1) {
-      const { actualizado: _actualizado, ...movimiento } = fila;
-      return { estado: 'actualizado', movimiento: enriquecerMovimiento(movimiento) };
-    }
-
-    return !fila
-      ? { estado: 'no-encontrado' }
+    return movimiento.aprobado === aprobado
+      ? { estado: 'actualizado', movimiento }
       : { estado: 'ya-dictaminado' };
   }
 
-  async obtenerKPIs() {
-    const movimientos = await this.listar();
-    const scrap = movimientos.filter((movimiento) => movimiento.MovimientoTipoId === 1);
-    const aprobados = movimientos.filter((movimiento) => movimiento.aprobado === 1).length;
-
-    return {
-      totalMovimientos: movimientos.length,
-      piezasScrapTotal: scrap.reduce((total, movimiento) => total + movimiento.cantidad, 0),
-      pendientesAprobacion: movimientos.filter((movimiento) => movimiento.aprobado === 0).length,
-      aprobadosTotal: aprobados,
-      rechazadosTotal: movimientos.filter((movimiento) => movimiento.aprobado === 2).length,
-      tasaAprobacion: movimientos.length > 0 ? ((aprobados / movimientos.length) * 100).toFixed(1) : '0',
-    };
-  }
 }

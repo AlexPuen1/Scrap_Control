@@ -62,6 +62,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: <FileBarChart className="w-5 h-5 shrink-0" />,
     },
     {
+      to: '/comparativa-mensual',
+      label: 'Comparación mensual',
+      icon: <FileBarChart className="w-5 h-5 shrink-0" />,
+    },
+    {
       to: '/configuracion',
       label: 'Configuración',
       icon: <Settings className="w-5 h-5 shrink-0" />,
@@ -93,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {(!collapsed || mobileOpen) && (
               <div className="flex flex-col truncate">
                 <span className="font-bold text-white tracking-wider text-sm">
-                  SCRAP<span className="text-blue-400">MES</span>
+                  SCRAP<span className="text-blue-400">Control</span>
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">
                   Automotive Plant
@@ -148,21 +153,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ))}
         </div>
 
-        {/* Plant Status Footnote */}
+        {/* Application information */}
         <div className="p-3 border-t border-slate-800 shrink-0">
           {(!collapsed || mobileOpen) ? (
             <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs">
-              <div className="flex items-center gap-2 text-emerald-400 font-semibold mb-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>MES Online / SAP S/4</span>
+              <div className="flex items-center gap-2 text-slate-200 font-semibold mb-1">
+                <Factory className="w-3.5 h-3.5 text-blue-400" />
+                <span>SCRAPControl</span>
               </div>
               <p className="text-[11px] text-slate-400">
-                Planta Saltillo - V 2.4.0
+                Consultas mediante API corporativa
               </p>
             </div>
           ) : (
-            <div className="flex justify-center" title="MES Online / Conectado">
-              <span className="w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20 animate-pulse" />
+            <div className="flex justify-center" title="SCRAPControl · consultas mediante API corporativa">
+              <Factory className="w-5 h-5 text-blue-400" />
             </div>
           )}
         </div>

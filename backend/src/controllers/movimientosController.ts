@@ -40,8 +40,12 @@ export async function getMovimientos(req: Request, res: Response) {
 }
 
 export async function getMovimientoById(req: Request, res: Response) {
-  const id = Number.parseInt(req.params.id, 10);
-  if (!Number.isInteger(id)) {
+  if (!/^[1-9]\d*$/.test(req.params.id)) {
+    res.status(400).json({ exitoso: false, mensaje: 'ID de movimiento inválido.' });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id)) {
     res.status(400).json({ exitoso: false, mensaje: 'ID de movimiento inválido.' });
     return;
   }
@@ -55,6 +59,51 @@ export async function getMovimientoById(req: Request, res: Response) {
     res.json({ exitoso: true, datos: movimiento });
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : 'Error al obtener movimiento.';
+    res.status(500).json({ exitoso: false, mensaje });
+  }
+}
+
+export async function getRazones(req: Request, res: Response) {
+  const movimientoTipoId = Number(req.query.movimientoTipoId);
+  if (!Number.isSafeInteger(movimientoTipoId) || movimientoTipoId < 1) {
+    res.status(400).json({ exitoso: false, mensaje: 'Tipo de movimiento inválido.' });
+    return;
+  }
+
+  try {
+    const datos = await repo.obtenerRazones(movimientoTipoId);
+    res.json({ exitoso: true, datos });
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : 'Error al obtener razones.';
+    res.status(500).json({ exitoso: false, mensaje });
+  }
+}
+
+export async function actualizarRazon(req: Request, res: Response) {
+  if (!/^[1-9]\d*$/.test(req.params.id)) {
+    res.status(400).json({ exitoso: false, mensaje: 'ID de movimiento inválido.' });
+    return;
+  }
+  const id = Number(req.params.id);
+  const razonId = req.body?.razonId;
+  if (!Number.isSafeInteger(id) || !(razonId === null || (Number.isSafeInteger(razonId) && razonId > 0))) {
+    res.status(400).json({ exitoso: false, mensaje: 'Selecciona una razón válida o indica que no tiene razón.' });
+    return;
+  }
+
+  try {
+    const resultado = await repo.actualizarRazon(id, razonId);
+    if (resultado.estado === 'no-encontrado') {
+      res.status(404).json({ exitoso: false, mensaje: 'Movimiento no encontrado.' });
+      return;
+    }
+    if (resultado.estado === 'razon-invalida') {
+      res.status(400).json({ exitoso: false, mensaje: 'La razón seleccionada no está disponible para este tipo de movimiento.' });
+      return;
+    }
+    res.json({ exitoso: true, datos: resultado.movimiento });
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : 'Error al actualizar la razón.';
     res.status(500).json({ exitoso: false, mensaje });
   }
 }
@@ -97,22 +146,38 @@ export async function registrarDictamen(req: Request, res: Response) {
   }
 }
 
-export async function getKPIs(_req: Request, res: Response) {
+export async function getScrapPorLinea(_req: Request, res: Response) {
   try {
-    const kpis = await repo.obtenerKPIs();
-    res.json({ exitoso: true, datos: kpis });
+    const reporte = await repo.obtenerScrapPorLinea();
+    res.json({ exitoso: true, ...reporte });
   } catch (error) {
-    const mensaje = error instanceof Error ? error.message : 'Error al calcular indicadores.';
+    const mensaje = error instanceof Error ? error.message : 'Error al obtener Scrap por línea.';
     res.status(500).json({ exitoso: false, mensaje });
   }
 }
 
-export async function getScrapPorLinea(_req: Request, res: Response) {
+export async function getComparativaMensual(req: Request, res: Response) {
+  const mes = typeof req.query.mes === 'string' ? req.query.mes : '';
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
+    res.status(400).json({ exitoso: false, mensaje: 'Indica un mes válido en formato YYYY-MM.' });
+    return;
+  }
+
+  const [anio, mesNumero] = mes.split('-').map(Number);
+  if (anio < 1753 || anio > 9998) {
+    res.status(400).json({ exitoso: false, mensaje: 'El año debe estar entre 1753 y 9998.' });
+    return;
+  }
+
+  const inicioActual = `${mes}-01`;
+  const inicioAnterior = new Date(Date.UTC(anio, mesNumero - 2, 1)).toISOString().slice(0, 10);
+  const finActual = new Date(Date.UTC(anio, mesNumero, 1)).toISOString().slice(0, 10);
+
   try {
-    const datos = await repo.obtenerScrapPorLinea();
-    res.json({ exitoso: true, datos });
+    const reporte = await repo.obtenerComparativaMensual(inicioAnterior, inicioActual, finActual);
+    res.json({ exitoso: true, ...reporte });
   } catch (error) {
-    const mensaje = error instanceof Error ? error.message : 'Error al obtener Scrap por línea.';
+    const mensaje = error instanceof Error ? error.message : 'Error al comparar los meses.';
     res.status(500).json({ exitoso: false, mensaje });
   }
 }

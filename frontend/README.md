@@ -1,24 +1,106 @@
-# Frontend - Automotive MES SCRAP Dashboard
+# SCRAPControl — frontend
 
-Aplicación web React + TypeScript desarrollada para el control y seguimiento de movimientos de materiales y scrap en plantas automotrices.
+Interfaz React 19 + TypeScript + Vite. El frontend consume únicamente las rutas JSON del backend bajo `/api`; la API SQL corporativa, la configuración `DB_*` y los comandos SQL permanecen en Node/Express.
 
-## Scripts Disponibles
+## Componentes principales
 
-En el directorio `frontend/`:
+- `src/App.tsx`: React Router y rutas de las páginas.
+- `src/layouts/MainLayout.tsx`: estructura de navegación, sidebar y encabezado.
+- `src/context/ScrapContext.tsx`: estado compartido de movimientos, carga/error, turno, notificaciones, motivos y toasts.
+- `src/services/scrapService.ts`: solicitudes HTTP, validación de respuesta y adaptación de filas SQL al modelo de interfaz.
+- `src/types/`: interfaces para movimientos, opciones de razón y reportes.
+- `src/mock/data.ts`: motivos y notificaciones locales/de demostración.
+- `src/pages/`: pantallas.
 
-- `npm run dev`: Inicia el servidor de desarrollo en `http://localhost:5173/` con Hot Module Replacement (HMR).
-- `npm run build`: Compila y valida tipos TypeScript con `tsc -b` y empaqueta con Vite para producción.
-- `npm run preview`: Sirve localmente los archivos compilados en la carpeta `dist/`.
-- `npm run lint`: Ejecuta el linter rápido de Oxlint.
+## Rutas y comportamiento
 
-## Tecnologías Principales
+| Ruta | Página | Datos y comportamiento |
+|---|---|---|
+| `/dashboard` | `DashboardPage` | Usa el conjunto predeterminado de movimientos; permite otro rango con consulta API, muestra periodo, indicadores, tendencias, exportación. El rango personalizado se mantiene local a esa pantalla. |
+| `/movimientos` | `MovimientosPage` | Tabla compacta de movimientos cargados, búsqueda, filtros locales por estado/tipo/razón, ordenamiento, paginación visual y exportación CSV. |
+| `/movimientos/:id` | `MovimientoDetallePage` | Encuentra el registro dentro del contexto cargado y presenta ficha/razón. Carga opciones de razón del backend y permite persistir su selección. |
+| `/aprobaciones` | `AprobacionesPage` | Pendientes cargados; filtros por certificación, línea y fecha/hora; selección múltiple y dictamen individual o por lote. |
+| `/fallas-por-linea` | `FallasPorLineaPage` | Solicita el agregado SQL independiente, su periodo y datos por línea; gráfica de barras horizontales, búsqueda y tabla. |
+| `/reportes` | `ReportesPage` | Filtra localmente el conjunto ya cargado, calcula resúmenes por certificación/MATNR y exporta CSV. |
+| `/comparativa-mensual` | `ComparativaMensualPage` | Compara el mes calendario elegido con el anterior y señala picos propios en cuatro métricas. |
+| `/motivos` | `MotivosPage` | Referencias y formularios locales; no modifica catálogos SQL. |
+| `/configuracion` | `ConfiguracionPage` | Valores visuales/locales; guardar muestra confirmación, no persiste configuración corporativa. |
 
-- **React 19** con Functional Components y Hooks.
-- **TypeScript** con tipado de dominio estricto.
-- **Tailwind CSS v4** mediante plugin nativo `@tailwindcss/vite`.
-- **React Router DOM v7** para navegación SPA.
-- **Recharts** para visualización de KPIs y Pareto.
-- **Framer Motion** para transiciones y modales.
-- **Lucide React** para iconografía industrial.
+## Cliente y contratos HTTP
 
-Para más detalles técnicos, consulta el archivo [../Documentacion.md](../Documentacion.md) y la memoria del proyecto en [../memoria.md](../memoria.md).
+La base de rutas se configura con `VITE_API_BASE_URL`; si no existe, es `/api`. Durante desarrollo Vite enruta `/api` a `http://localhost:3001`.
+
+| Interacción | Solicitud | Efecto |
+|---|---|---|
+| Carga compartida | `GET /api/movimientos` | Filas del periodo reciente calculado por el backend. |
+| Búsqueda Dashboard | `GET /api/movimientos?fechaInicio=...&fechaFin=...` | Fechas de UI son inclusivas; el cliente envía fin exclusivo (día posterior). |
+| Fallas por línea | `GET /api/movimientos/fallas-por-linea` | Periodo reciente y agregado SQL por `LineaId`. |
+| Comparación mensual | `GET /api/movimientos/comparativa-mensual?mes=YYYY-MM` | Agrega el mes seleccionado y el anterior por tendencia diaria, certificación, razón y línea; independiente del conjunto compartido. |
+| Opciones de razón | `GET /api/movimientos/razones?movimientoTipoId=N` | Descripciones válidas desde `dbo.vw_Scrap_PowerBI`. |
+| Guardar razón | `PATCH /api/movimientos/:id/razon` | `{ razonId: number | null }`; cambia datos reales. |
+| Aprobar/rechazar | `PATCH /api/movimientos/:id/dictamen` | `{ aprobado: 1 | 2, aprobadoPor }`; cambia datos reales. |
+
+El cliente comprueba `response.ok`, `exitoso` y que exista la estructura de datos esperada. Si la llamada falla, propaga el error a la página/contexto; no sustituye una respuesta SQL fallida por movimientos mock.
+
+### Adaptación de fila
+
+`adaptarMovimiento()` mantiene la fila original bajo `datosDB`, deriva fecha/hora, etiqueta el estado y obtiene el nombre del tipo a partir del mapa `MOVIMIENTO_TIPOS_SSMS`. Convierte `LineaId` a texto «Línea N» o «Sin línea asignada». La API no entrega nombre enriquecido del material, empleado, costos, historial ni unidad oficial; varios valores de presentación pueden estar vacíos, ser constantes o locales.
+
+## Filtros y presentación
+
+- La lista de Movimientos se obtiene inicialmente con el último periodo de un mes anclado a `MAX(fecha_hora)`; las búsquedas y filtros de UI operan sobre esas filas.
+- El Dashboard consulta otro intervalo al pulsar **Buscar**. El error y rango personalizado corresponden a esa página; no reemplaza la lista compartida para las otras pantallas.
+- Reportes no solicita al backend el rango filtrado: reduce en memoria el conjunto cargado por el contexto. Por tanto no puede mostrar fechas que quedaron fuera de ese conjunto.
+- Fallas por línea es una consulta de agregado separada; no cambia con el rango del Dashboard.
+- Movimientos oculta la credencial como columna principal, pero permite buscarla y el CSV puede contenerla porque exporta la fila original.
+- El ID de línea se presenta, no su nombre, porque no se consulta catálogo de líneas.
+- Los rangos visibles de las gráficas se calculan a partir de las fechas efectivamente representadas.
+- Los colores de las series conservan su estilo habitual. Los números y valores que aparecen en los tooltips son blancos para mejorar su lectura sobre el fondo oscuro.
+
+La Comparación mensual contrasta meses calendario completos. Para la tendencia diaria, alinea las observaciones por número de día del mes. Sus tarjetas resumen los máximos relativos de cada métrica, sin aplicar umbrales de riesgo. En la gráfica, los periodos se distinguen con sus colores de serie; los tooltips muestran los valores en blanco. Indica cuando faltan datos o cuando no existe base anterior para calcular porcentaje; ante error de API muestra la causa y permite reintentar sin presentar resultados obsoletos como actuales. En Dashboard y Aprobaciones se usan las descripciones de razón devueltas por SQL; el ID no se presenta como etiqueta de la razón.
+
+## Verificación funcional (28 de octubre de 2026)
+
+La compilación del frontend pasó y el lint focalizado de las páginas modificadas no reportó advertencias. El lint completo finalizó con advertencias preexistentes en `ScrapContext.tsx` y `ThemeContext.tsx`. Las rutas de pantalla se compilaron; las lecturas del backend se probaron por HTTP. La conexión a base respondió correctamente, se cargaron movimientos, detalle, razones, fallas por línea y comparación mensual, y los casos de error de fechas/mes/ID devolvieron 400. No se ejecutaron aprobaciones/rechazos ni guardado válido de razón desde la interfaz, porque modificarían datos reales; requieren ambiente de pruebas separado. El panel de configuración muestra explícitamente que sus ajustes son temporales y que confirmar no los persiste. No había navegador ni framework E2E instalado para probar los clics/formularios de la UI, CSV o impresión.
+
+## Selección y dictamen masivo
+
+La casilla general selecciona todas las solicitudes pendientes visibles respetando los filtros de certificación, línea y fecha/hora. Las acciones aprobar/rechazar requieren confirmación y un nombre de responsable. El frontend llama al endpoint individual en secuencia para cada ID. El conjunto no es transaccional: puede haber resultados parciales. Se notifican errores y se mantienen seleccionados los folios que fallaron; el nombre ingresado no comprueba la identidad del usuario.
+
+Los movimientos pendientes se identifican con `aprobado === 0`; `NULL` se representa como sin dictamen y no se incluye en el flujo actual.
+
+## Estado local y datos simulados
+
+`ScrapContext` guarda motivos y notificaciones en `localStorage` usando:
+
+- `scrap_mes_motivos_ssms_v2`
+- `scrap_mes_notificaciones_ssms_v2`
+
+El botón de reinicio borra estas claves y restaura referencias iniciales; no altera SQL. El tema, turno y toasts son estado de interfaz. El turno se calcula según la hora local del equipo. Las preferencias de configuración no se guardan en la base. Motivos locales no son la fuente del selector de ficha, que consulta `dbo.vw_Scrap_PowerBI`.
+
+## CSV e impresión
+
+La función `descargarCSV()` crea CSV UTF-8 con BOM, con columnas originales del movimiento cuando existe `datosDB`. Esto incluye `credencial` y valores de base que no están en la tabla. No es una exportación Excel `.xlsx`; puede abrirse en Excel como CSV. La impresión invoca `window.print()` y cambia temporalmente el título del documento a `${titulo} - SCRAPControl`. El patrón gráfico del marbete es ilustrativo, no es un código de barras escaneable.
+
+## Desarrollo
+
+Desde `frontend/`:
+
+```powershell
+npm run dev
+npm run build
+npm run lint
+npm run preview
+```
+
+`npm run build` ejecuta `tsc -b` y `vite build`. `npm run lint` ejecuta Oxlint. Para correr la aplicación con el backend desde la raíz, usa `npm run dev`; para compilar ambos paquetes, `npm run build`.
+
+## Límites de seguridad
+
+- El navegador no debe recibir secretos ni conectarse a `executeSQLCommand`.
+- La API local no implementa autenticación ni rol gerente; sus cambios persistentes son accesibles a clientes que alcancen el backend.
+- El campo de responsable es texto suministrado por el usuario.
+- Express permite CORS abierto; configura orígenes seguros antes de desplegar.
+- Datos de costos, historial, empleados y funcionalidades SAP no deben usarse como registros oficiales mientras sigan siendo locales/mock.
+
+Consulta la [documentación técnica](../Documentacion.md), el [README del proyecto](../README.md) y la [guía de conexión](../BaseDeDatos/ConexionBaseDatos.md).

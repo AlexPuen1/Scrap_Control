@@ -10,6 +10,7 @@ import { AprobacionesPage } from './pages/AprobacionesPage';
 import { MotivosPage } from './pages/MotivosPage';
 import { FallasPorLineaPage } from './pages/FallasPorLineaPage';
 import { ReportesPage } from './pages/ReportesPage';
+import { ComparativaMensualPage } from './pages/ComparativaMensualPage';
 import { ConfiguracionPage } from './pages/ConfiguracionPage';
 
 export const App: React.FC = () => {
@@ -27,6 +28,7 @@ export const App: React.FC = () => {
               <Route path="motivos" element={<MotivosPage />} />
               <Route path="fallas-por-linea" element={<FallasPorLineaPage />} />
               <Route path="reportes" element={<ReportesPage />} />
+              <Route path="comparativa-mensual" element={<ComparativaMensualPage />} />
               <Route path="configuracion" element={<ConfiguracionPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>

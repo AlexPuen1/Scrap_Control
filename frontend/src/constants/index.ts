@@ -1,11 +1,11 @@
-import type { CategoriaMotivo, EstatusMovimiento, Turno, MovimientoTipoCatalogo, CertificacionCatalogo } from '../types';
+import type { CategoriaMotivo, EstatusMovimiento, Turno, MovimientoTipoCatalogo } from '../types';
 
 export const INFO_PLANTA = {
   nombre: 'Planta Saltillo - Carrocerías & Estampado',
   organizacion: 'Magna Exteriors & Stamping Division',
   codigoSapPlanta: '1020',
   sistema: 'SAP S/4HANA & MES Industry 4.0',
-  baseDeDatos: 'SQL Server (SSMS) - Tabla dbo.Movimientos',
+  baseDeDatos: 'API corporativa Magna - SOE',
 };
 
 export const TURNOS_PLANTA: { id: Turno; etiqueta: string; horario: string }[] = [
@@ -21,9 +21,7 @@ export function obtenerTurnoActual(fecha: Date): Turno {
   return 'Turno 3';
 }
 
-/**
- * Catálogo Oficial de dbo.MovimientoTipo (IDs 1 al 8 según Estructura.txt)
- */
+/** Mapa local de nombres para los IDs observados en MovimientoTipoId. */
 export const MOVIMIENTO_TIPOS_SSMS: MovimientoTipoCatalogo[] = [
   { id: 1, nombre: 'Scrap', descripcion: 'Descarte total de material sin recuperación', activo: true },
   { id: 2, nombre: 'Retrabajo en Linea', descripcion: 'Recuperación inmediata en celda de producción', activo: true },
@@ -44,19 +42,6 @@ export const CATEGORIAS_MOTIVOS: CategoriaMotivo[] = [
   'metal Finish',
   'Traspaleo',
   'Impresion Parcial',
-];
-
-/**
- * Catálogo Oficial de dbo.Certificaciones (Estaciones de impresión de etiquetas)
- */
-export const CERTIFICACIONES_PLANTA: CertificacionCatalogo[] = [
-  { id: 101, nombre: 'Estación Certificadora Prensa 01', linea: 'L-01', estacion: 'EST-01', ubicacion: 'Prensas Transfer', activo: true },
-  { id: 102, nombre: 'Estación Certificadora Prensa 02', linea: 'L-02', estacion: 'EST-02', ubicacion: 'Prensas Tándem', activo: true },
-  { id: 103, nombre: 'Celda Certificación Soldadura A', linea: 'L-03', estacion: 'EST-W1', ubicacion: 'Soldadura Robótica', activo: true },
-  { id: 104, nombre: 'Celda Certificación Soldadura B', linea: 'L-03', estacion: 'EST-W2', ubicacion: 'Soldadura Robótica', activo: true },
-  { id: 105, nombre: 'Estación Final Metal Finish 01', linea: 'L-05', estacion: 'EST-MF1', ubicacion: 'Bahía de Acabados', activo: true },
-  { id: 106, nombre: 'Mesa de Calidad y CMM Central', linea: 'CAL-01', estacion: 'LAB-CMM', ubicacion: 'Metrología', activo: true },
-  { id: 107, nombre: 'Bahía de Cuarentena e Inspección', linea: 'CUA-01', estacion: 'ALM-05', ubicacion: 'Cuarentena', activo: true },
 ];
 
 export const LINEAS_PRODUCCION = [

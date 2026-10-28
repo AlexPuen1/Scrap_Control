@@ -1,389 +1,252 @@
-# Documentación Técnica: Frontend SCRAP Dashboard (MES Industrial)
+# SCRAPControl: documentación técnica
 
-Esta documentación describe la arquitectura técnica, modelo de datos, componentes, estado global, flujos y guía de operación del frontend del sistema corporativo **SCRAP Dashboard**.
+## 1. Propósito y estado del producto
 
----
+SCRAPControl es una aplicación web React/TypeScript con backend Node.js/Express para consultar movimientos de Scrap de `SOE`, mostrar trazabilidad disponible y gestionar dos cambios persistentes: dictamen y razón del movimiento.
 
-## 1. Ficha Técnica y Matriz de Dependencias
+La siguiente separación evita confundir la interfaz con una integración completa:
 
-El proyecto está construido sobre el ecosistema moderno de React con TypeScript, optimizado mediante el empaquetador Vite y estilos atómicos con Tailwind CSS v4.
+| Estado | Funciones |
+|---|---|
+| Lectura corporativa | Lista/detalle de `dbo.Movimientos`, línea vía `dbo.Certificacion`, razón vía `dbo.vw_Scrap_PowerBI`, agregado Scrap por línea. |
+| Escritura corporativa | Dictamen `aprobado`/`rechazado`; actualización de `RazonId` o `NULL`. |
+| Cálculo local sobre datos consultados | Filtros visuales, indicadores, reportes, orden y paginación; la mayoría de las gráficas. |
+| Local/mock | Catálogo de motivos, notificaciones, configuración visual, algunos atributos de ficha y datos de demostración. |
+| No conectado | Alta de movimientos, SAP, autenticación/roles, costos oficiales, OEE y transacciones masivas. |
 
-| Tecnología / Librería | Versión | Rol en el Proyecto |
-| :--- | :--- | :--- |
-| **Node.js** | >= 20.x (v24.22.0) | Entorno de ejecución JavaScript para desarrollo y compilación |
-| **React** | 19.3.1 | Biblioteca base de interfaz de usuario |
-| **React DOM** | 19.3.1 | Renderizador de React para el navegador web |
-| **TypeScript** | 5.8.x / 6.0.x | Tipado estático estricto para modelos de dominio y componentes |
-| **Vite** | 8.3.4 | Entorno de desarrollo ultrarrápido y bundler de producción |
-| **Tailwind CSS** | 4.3.3 | Motor de diseño con `@tailwindcss/vite` |
-| **React Router DOM** | 7.18.4 | Enrutamiento del lado del cliente (SPA) con histórico |
-| **Framer Motion** | 14.4.0 | Animaciones de modales, transiciones de tarjetas y toasts |
-| **Recharts** | 3.10.1 | Visualización de datos interactiva (áreas y barras) |
-| **Lucide React** | 1.60.0 | Iconografía corporativa e industrial de alta coherencia |
+Las escrituras cambian datos reales. Actualmente el backend no comprueba identidad ni rol gerente; el texto del responsable no es autenticación. No exponer el servicio fuera de una red controlada hasta integrar controles de acceso.
 
----
+## 2. Arquitectura
 
-## 2. Estructura de Directorios del Código Fuente
-
-Toda la aplicación reside en el directorio `/frontend`. La estructura sigue los lineamientos de **Clean Architecture** y modularidad funcional:
-
-```
-frontend/
-├── index.html                   # HTML base con fuentes Inter y JetBrains Mono
-├── package.json                 # Definición de dependencias y scripts npm
-├── tsconfig.json                # Configuración raíz de TypeScript
-├── tsconfig.app.json            # Reglas de tipado de la aplicación
-├── tsconfig.node.json           # Configuración TS para Vite
-├── vite.config.ts               # Plugin React, Tailwind v4 y límites de chunks
-└── src/
-    ├── main.tsx                 # Montaje de React DOM en el nodo '#root'
-    ├── App.tsx                  # Enrutador central y Providers de Contexto
-    ├── index.css                # Directivas Tailwind v4 y scrollbars industriales
-    ├── constants/
-    │   └── index.ts             # Constantes maestras (Líneas, Almacenes, Colores SAP)
-    ├── types/
-    │   └── index.ts             # Definición de tipos e interfaces de dominio
-    ├── mock/
-    │   └── data.ts              # Dataset de 25+ registros realistas automotrices
-    ├── context/
-    │   ├── ScrapContext.tsx     # Estado global reactivo con persistencia LocalStorage
-    │   └── ThemeContext.tsx     # Contexto de modo Claro / Oscuro con clase en <html>
-    ├── services/
-    │   └── scrapService.ts      # Servicios mock asíncronos y simulador BAPI SAP 551
-    ├── utils/
-    │   └── formatters.ts        # Funciones de moneda, fechas, exportador CSV y PDF
-    ├── components/
-    │   └── common/
-    │       ├── Badge.tsx        # Indicadores de estado de material y severidad
-    │       ├── Button.tsx       # Botones con variantes industriales y estados de carga
-    │       ├── Card.tsx         # Contenedor corporativo con header, subtitle y slot
-    │       ├── Modal.tsx        # Diálogo modal accesible con backdrop y escape key
-    │       ├── Pagination.tsx   # Controles de paginación con selector de tamaño
-    │       ├── StatCard.tsx     # Tarjetas KPI tipo Power BI con variación y sparklines
-    │       └── ToastContainer.tsx # Notificaciones emergentes automáticas temporizadas
-    ├── layouts/
-    │   ├── MainLayout.tsx       # Contenedor responsivo con Sidebar y TopHeader
-    │   ├── Sidebar.tsx          # Menú de navegación colapsable con badges dinámicos
-    │   └── TopHeader.tsx        # Barra superior (Planta, Turno, Notificaciones, Perfil)
-    └── pages/
-        ├── DashboardPage.tsx    # Tablero ejecutivo de scrap en tiempo real
-        ├── MovimientosPage.tsx  # Registro y auditoría general de movimientos
-        ├── MovimientoDetallePage.tsx # Ficha 360°, marbete físico y timeline de hitos
-        ├── AprobacionesPage.tsx # Mesa de aprobación técnica de scrap por supervisor
-        ├── MotivosPage.tsx      # Catálogo CRUD interactivo de causas y defectos
-        ├── FallasPorLineaPage.tsx # Piezas Scrap agrupadas por línea
-        ├── ReportesPage.tsx     # Inteligencia de datos, filtros avanzados y exportador
-        └── ConfiguracionPage.tsx# Ajustes de planta, turnos, umbrales y reset de datos
+```text
+React (frontend)
+  └─ ScrapService: GET/PATCH JSON a /api
+       └─ Vite proxy (desarrollo) o proxy del host (despliegue)
+            └─ Express: controllers → MovimientosRepository
+                 └─ database.connection.ts: HTTPS POST
+                      └─ API corporativa /api/Utility/executeSQLCommand
+                           └─ SQL Server est04db / SOE
 ```
 
----
+| Área | Archivos principales |
+|---|---|
+| Rutas y providers | `frontend/src/App.tsx`, `frontend/src/context/` |
+| Cliente REST y adaptación | `frontend/src/services/scrapService.ts` |
+| Pantallas | `frontend/src/pages/` |
+| Servidor y rutas REST | `backend/src/server.ts`, `backend/src/routes/movimientosRoutes.ts` |
+| Validación de solicitudes | `backend/src/controllers/movimientosController.ts` |
+| Consultas y agregados | `backend/src/repositories/movimientosRepository.ts` |
+| Cliente de API SQL | `backend/src/config/database.connection.ts` |
+| Ajustes de SQL corporativo | `BaseDeDatos/.env` |
 
-## 3. Modelo de Datos y Tipos TypeScript (`src/types/index.ts`)
+El navegador no recibe la URL corporativa ni manda comandos SQL. Node solicita `server`, `db` y `command` a la API con `Content-Type: application/json`. No se configura usuario/contraseña SQL en el cliente local ni se usa ODBC. La identidad y autorización del siguiente salto, API→SQL, las administra la organización y no se deducen del código.
 
-### 3.1 Tipos Primitivos y Enums
+## 3. Instalación, configuración y comandos
 
-```typescript
-export type EstatusMovimiento = 
-  | 'Pendiente' 
-  | 'Aprobado' 
-  | 'Rechazado' 
-  | 'En Cuarentena' 
-  | 'Retrabajo';
+### Requisitos
 
-export type CategoriaMotivo = 
-  | 'Scrap'
-  | 'Retrabajo en Línea'
-  | 'Calidad'
-  | 'Cuarentena'
-  | 'Calidad Reingreso'
-  | 'Metal Finish'
-  | 'Traspaleo'
-  | 'Impresión Parcial'
-  | 'Reingreso Parcial';
+- Node.js 24 o posterior, npm.
+- Conectividad HTTPS con la API corporativa desde el equipo del backend.
+- Certificado HTTPS confiable para Node/sistema operativo.
 
-export type SeveridadMotivo = 'Crítica' | 'Alta' | 'Media' | 'Baja';
+### Instalación y ejecución
 
-export type Turno = 'Turno 1' | 'Turno 2' | 'Turno 3';
+Desde la raíz:
+
+```powershell
+npm install
+npm install --prefix backend
+npm install --prefix frontend
+npm run test:db
+npm test
+npm run dev
 ```
 
-### 3.2 Entidad `Movimiento` (Núcleo de Datos de Scrap)
-Representa una transacción de material no conforme generada en el sistema MES:
+El frontend de Vite usa normalmente `http://localhost:5173`; Express usa `http://localhost:3001`. `npm test` ejecuta pruebas unitarias aisladas del backend, sin conexión SQL; `npm run test:db` verifica conexión con un `SELECT` de solo lectura. `npm run build` ejecuta compilación TypeScript del backend y build TypeScript/Vite del frontend. `npm start` arranca el backend compilado y `vite preview`; no sustituye la configuración de un servidor productivo.
 
-```typescript
-export interface Movimiento {
-  id: string;                    // Folio único ej. "SC-2026-0841"
-  matnr: string;                 // Número de material SAP ej. "MAT-849201"
-  descripcion: string;           // Descripción técnica ej. "Fender Delantero Izq"
-  fecha: string;                 // Formato ISO YYYY-MM-DD
-  hora: string;                  // Formato HH:mm
-  credencial: string;            // Identificador de empleado ej. "EMP-3041"
-  empleado: string;              // Nombre del operador o capturista
-  movimientoTipo: CategoriaMotivo; // Clasificación del movimiento
-  motivoEspecifico: string;      // Causa raíz del defecto
-  cantidad: number;              // Número de piezas afectadas
-  unidad: string;                // Unidad de medida estándar (PZA)
-  almacenSalida: string;         // Origen ej. "ALM-02 (WIP)"
-  almacenRetorno: string;        // Destino ej. "ALM-99 (Scrap Yard)"
-  linea: string;                 // Línea de producción ej. "L-01 Estampado"
-  almacen: string;               // Código de almacén SAP
-  estatus: EstatusMovimiento;    // Estado en el workflow
-  turno: Turno;                  // Turno operativo en que se generó
-  costoUnitario: number;         // Costo en USD por pieza
-  costoTotal: number;            // Costo acumulado (cantidad * costoUnitario)
-  ordenProduccion?: string;      // Número de Orden de Producción SAP (OP)
-  lote?: string;                 // Lote de material recibido o procesado
-  observaciones?: string;        // Notas técnicas levantadas en piso
-  aprobadoPor?: string;          // Nombre del supervisor que auditó
-  fechaAprobacion?: string;      // Timestamp de la firma
-  comentariosAprobacion?: string;// Observaciones emitidas en la aprobación/rechazo
-  historial: HitoHistorial[];     // Trazabilidad inmutable de eventos
+### Variables
+
+`BaseDeDatos/.env` se crea copiando `BaseDeDatos/.env.example`:
+
+| Variable | Definición |
+|---|---|
+| `DB_API_BASE_URL` | Raíz HTTPS de la API, sin `/api/Utility/executeSQLCommand`. |
+| `DB_SERVER` | Nombre solicitado al servicio SQL (por defecto `est04db`). |
+| `DB_DATABASE` | Base solicitada (por defecto `SOE`). |
+| `DB_API_TIMEOUT` | Timeout de `fetch` en milisegundos (por defecto `20000`). |
+
+`backend/.env` controla `PORT` (por defecto `3001`). `VITE_API_BASE_URL` permite definir la base de las rutas Express en el frontend; sin ella se usa `/api`. No almacenar credenciales en documentación o archivos versionados.
+
+## 4. Arranque y estado de salud
+
+El servidor carga `backend/.env`, instala CORS, parser JSON y logging de método/URL; registra `/api/health` y `/api/movimientos`; y escucha en `PORT`. Después invoca `connectToDatabase()`, que llama a la API corporativa mediante:
+
+```sql
+SELECT DB_NAME() AS baseActual, @@SERVERNAME AS servidorActual
+```
+
+La prueba comprueba que la base sea `SOE` y que el nombre del servidor empiece por `est04db` (la instancia observada fue `EST04DB\\QASEMM`). Si falla, se registra el error, pero Express no cierra el listener. `GET /api/health` muestra el estado de conexión más reciente y su timestamp de respuesta HTTP; no ejecuta una prueba nueva en cada llamada.
+
+El payload de salud incluye campos de tablas relacionados que se construyen como metadatos estáticos. Parte de esa lista es heredada y puede mencionar `dbo.EtiquetasCI`, que no existe en la base consultada. Para el catálogo editable, la implementación usa `dbo.vw_Scrap_PowerBI`; no tratar el listado de salud como inspección real del esquema.
+
+Los scripts Node (`dev`, `start`, `test:db`) usan `--use-system-ca`. HTTPS conserva la verificación de certificados; no equivale a confiar en cualquier certificado. Cada consulta realiza una petición HTTP nueva, no se mantiene una sesión SQL local persistente.
+
+## 5. Contrato con la API corporativa
+
+El cliente envía `POST ${DB_API_BASE_URL}/api/Utility/executeSQLCommand`:
+
+```json
+{
+  "server": "est04db",
+  "db": "SOE",
+  "command": "SELECT ..."
 }
 ```
 
-### 3.3 Entidad `HitoHistorial` (Trazabilidad IATF 16949)
-```typescript
-export interface HitoHistorial {
-  id: string;
-  titulo: string;
-  descripcion: string;
-  fechaHora: string;
-  usuario: string;
-  rol: string;
-  estado: 'completado' | 'actual' | 'pendiente' | 'rechazado';
-}
+El resultado esperado es JSON con `success`, opcionalmente `message`, `rows` para lecturas y `affectedRows` para escrituras. Un HTTP no exitoso, JSON inválido, `success !== true`, timeout o error de red se convierte en error de aplicación; no se sustituye por datos simulados. Una lectura exitosa sin `rows` se traduce en lista vacía.
+
+`consultarSQL()` admite únicamente comandos que comienzan con `SELECT` y bloquea `;`, `--`, `/*` y `*/`. Las escrituras no pasan por esa función: las funciones `actualizarDictamenSQL` y `actualizarRazonSQL` construyen comandos específicos. La API remota es genérica; el filtro local no restringe por sí mismo los permisos remotos de esa API.
+
+## 6. Flujo de datos de movimientos
+
+### Carga y periodo
+
+Al montar `ScrapProvider`, el cliente solicita `GET /api/movimientos`. Si no se indican fechas, el repositorio obtiene `MAX(fecha_hora)` de `dbo.Movimientos` y consulta:
+
+- desde `CONVERT(date, DATEADD(MONTH, -1, fechaMaxima))`, inclusivo;
+- hasta el día posterior a `fechaMaxima`, exclusivo.
+
+Es una ventana de un mes anclada a la última fecha existente, no el mes calendario actual. Si la tabla está vacía, la comparación de fecha no devuelve filas. La consulta une `dbo.Certificacion` para obtener `LineaId` y resuelve `DescripcionRazon` mediante subconsulta a la vista `dbo.vw_Scrap_PowerBI`.
+
+La lista puede recibir `fechaInicio` inclusiva y `fechaFin` exclusiva, ambas `YYYY-MM-DD`. El controller exige que ambas estén presentes, que sean fechas reales y que `fechaFin > fechaInicio`. El Dashboard presenta ambos días como inclusivos y suma un día al valor de «Hasta» antes de llamar a la API.
+
+### Filtros y límite de volumen
+
+`GET /api/movimientos` admite `tipoId`, `aprobado`, `razonId` y `busqueda`, además de fechas. El SQL obtiene la fila de movimiento y la consulta de fecha; después `aplicarFiltros()` filtra tipo, dictamen, razón y texto en el proceso Node. La búsqueda considera ID, serial, MATNR, MATNR_FG, credencial, nombre local del tipo, RazonId y almacén. No hay `LIMIT`, paginación ni filtros SQL para esos cuatro criterios en el contrato actual.
+
+La lista ordena por ID descendente. El backend enriquece `MovimientoTipoNombre` mediante un mapa local, no consulta `dbo.MovimientoTipo`. El DTO añade `LineaId` y `DescripcionRazon`; ambos son valores derivados, no columnas físicas de `dbo.Movimientos`.
+
+### Reporte de Scrap por línea
+
+`GET /api/movimientos/fallas-por-linea` calcula `MAX(fecha_hora)`, determina fecha inicial un mes antes y fecha final según ese máximo; después agrega Scrap (`MovimientoTipoId = 1`) en el rango. Une:
+
+```text
+Movimientos.CertificacionId → Certificacion.id → Certificacion.LineaId
 ```
 
-### 3.4 Entidad `Motivo` (Catálogo de Defectos)
-```typescript
-export interface Motivo {
-  id: string;
-  codigo: string;                // Código estandarizado ej. "SCRAP-EST-01"
-  nombre: string;                // Nombre del defecto
-  categoria: CategoriaMotivo;    // Tipo de movimiento asociado
-  descripcion: string;           // Criterio de inspección y tolerancias
-  severidad: SeveridadMotivo;    // Clasificación de criticidad
-  activo: boolean;               // Habilitado para captura en piso
-  costoDefectoPromedio?: number; // Costo financiero referencial
-}
+La salida contiene `periodo` (`fechaInicio`, `fechaFin`) y `datos` (`lineaId`, `movimientos`, `piezasScrap`). `COUNT_BIG(*)` calcula movimientos y `SUM(cantidad)` piezas. La unión es `LEFT JOIN`, por lo que registros sin certificación asociada pueden agruparse con `lineaId = null`. Esta consulta no usa el periodo del Dashboard ni un filtro de usuario. La interfaz incluye el periodo y usa barras horizontales.
+
+### Comparación mensual
+
+`GET /api/movimientos/comparativa-mensual?mes=YYYY-MM` valida el mes calendario y devuelve agregados del mes indicado y del mes anterior en una sola respuesta. Incluye cuatro métricas: piezas Scrap por día, piezas por certificación, piezas Scrap por razón y piezas Scrap por línea. Los días se alinean por número del día dentro del mes, aunque no coincidan en día de semana y los meses tengan distinta longitud.
+
+La pantalla propone el mes de la fecha más reciente cargada; si no hay movimientos, propone el mes actual. Las tarjetas resumen los picos del mes seleccionado; se trata del máximo relativo a esa métrica, no de un límite industrial ni una regla global. Las barras mantienen colores diferenciados por periodo y los valores del tooltip se muestran en blanco. Se muestran totales y variación respecto del periodo anterior. Si el mes anterior no tiene valor base, se informa que el porcentaje no puede calcularse; si no hay registros, no se inventan picos. Errores de API muestran reintento y no se presentan resultados viejos como si fueran de la nueva selección.
+
+La comparación es independiente de los rangos de Dashboard, Reportes y Fallas por línea. Certificación incluye todos los tipos de movimiento, como su gráfica en Dashboard; tendencia, razón y línea consideran solo `MovimientoTipoId = 1`.
+
+## 7. Endpoints Express
+
+| Método | Ruta | Validación/resultado |
+|---|---|---|
+| `GET` | `/api/health` | `status`, fecha, tipo de DB, estado más reciente, modo y nombres de tabla como metadatos estáticos. |
+| `GET` | `/api/movimientos` | `{ exitoso, datos, conteo }`; rango opcional y filtros `tipoId`, `aprobado`, `razonId`, `busqueda`. |
+| `GET` | `/api/movimientos/comparativa-mensual?mes=YYYY-MM` | `{ exitoso, periodos, datos }`; agregado del mes seleccionado y el anterior. |
+| `GET` | `/api/movimientos/fallas-por-linea` | `{ exitoso, periodo, datos }`; periodo reciente calculado en el servidor. |
+| `GET` | `/api/movimientos/razones?movimientoTipoId=N` | `{ exitoso, datos: [{ id, descripcion }] }`; requiere tipo entero positivo. |
+| `GET` | `/api/movimientos/:id` | `{ exitoso, datos }`; entero y respuesta 404 si no existe. |
+| `PATCH` | `/api/movimientos/:id/razon` | JSON `{ razonId: entero positivo | null }`; valida razón para el tipo del movimiento. |
+| `PATCH` | `/api/movimientos/:id/dictamen` | JSON `{ aprobado: 1 | 2, aprobadoPor: string }`; solo modifica pendiente `0`. |
+
+Las rutas literales (`fallas-por-linea`, `razones`) y rutas de acción se registran antes de `/:id`.
+
+### Respuestas de error
+
+Los controllers responden JSON `{ exitoso: false, mensaje }`. Según la operación se esperan:
+
+- `400`: parámetro/rango/ID/tipo/razón/dictamen inválidos.
+- `404`: movimiento inexistente.
+- `409`: el dictamen ya no está pendiente o el `UPDATE` no afectó la fila.
+- `500`: error de API SQL, lectura, actualización o verificación.
+
+`GET /api/movimientos/:id` exige un ID decimal positivo completo y seguro; no acepta sufijos, decimales, cero ni valores fuera del rango seguro. Los endpoints de escritura exigen también ID positivo seguro. El controller del dictamen acepta únicamente `1` o `2` y nombre recortado de 1 a 200 caracteres. `razonId` debe ser `null` o entero positivo seguro.
+
+## 8. Escrituras de negocio
+
+### Dictamen individual
+
+`PATCH /api/movimientos/:id/dictamen` repite las validaciones en controller y cliente SQL. El nombre se recorta en controller y se escapan apóstrofos antes de insertarlo como literal SQL Unicode. El `UPDATE` fijo:
+
+```sql
+UPDATE dbo.Movimientos
+SET aprobado = 1 | 2,
+    nvAprobadoPor = N'...',
+    dtAprobado = GETDATE()
+WHERE id = ... AND aprobado = 0
 ```
 
----
+El repositorio vuelve a leer el movimiento. Si no existe, responde 404; si no se actualizó/no era pendiente, 409; al confirmar, devuelve el registro actualizado. Los `NULL` no son candidatos por la condición `aprobado = 0`. El nombre guardado no es autenticación.
 
-## 4. Arquitectura del Estado Global
+### Dictamen múltiple
 
-El sistema utiliza la Context API de React desacoplada en dos proveedores:
+El frontend toma IDs seleccionados que continúan visibles, solicita nombre y confirmación, y ejecuta cada dictamen de forma secuencial mediante la misma ruta individual. Informa registros exitosos y fallidos. Los fallidos permanecen seleccionados para reintentar. No hay transacción de lote, rollback ni garantía de atomicidad.
 
-### 4.1 `ThemeContext` (`src/context/ThemeContext.tsx`)
-- **Estado:** `'light' | 'dark'`.
-- **Comportamiento:**
-  - Al iniciar, consulta la clave `localStorage.getItem('scrap_mes_theme')`. Si no existe, lee la preferencia del sistema operativo mediante `window.matchMedia('(prefers-color-scheme: dark)')`.
-  - Agrega o remueve la clase `.dark` del elemento raíz `document.documentElement` para que las utilidades `dark:` de Tailwind CSS respondan de inmediato.
-  - Ofrece las funciones `toggleTheme()` y `setTheme(theme)`.
+### Actualización de razón
 
-### 4.2 `ScrapContext` (`src/context/ScrapContext.tsx`)
-Gestiona toda la lógica reactiva de negocio de la aplicación con persistencia local en `localStorage`:
+`GET /api/movimientos/razones?movimientoTipoId=N` agrupa razones con descripción no vacía desde `dbo.vw_Scrap_PowerBI`. `PATCH /api/movimientos/:id/razon` primero obtiene el movimiento; si `razonId` no es null, valida su pertenencia al catálogo disponible para ese `MovimientoTipoId`; actualiza `dbo.Movimientos.RazonId`; y relee el movimiento para confirmar. `null` guarda SQL `NULL`. La tabla `dbo.EtiquetasCI` no se usa porque no existe en la base consultada.
 
-#### Claves de Almacenamiento:
-- `scrap_mes_movimientos_v1`: Arreglo serializado de `Movimiento[]`.
-- `scrap_mes_motivos_v1`: Arreglo serializado de `Motivo[]`.
-- `scrap_mes_notificaciones_v1`: Arreglo serializado de `Notificacion[]`.
-- `scrap_mes_turno_v1`: Identificador del `Turno` en curso.
+Ambos cambios son persistentes y no tienen autenticación/autorización en el backend actual.
 
-#### Métodos Expuestos:
-1. `aprobarMovimiento(id: string, comentarios?: string)`:
-   - Localiza el movimiento por su ID.
-   - Modifica `estatus` a `'Aprobado'`.
-   - Establece `aprobadoPor = 'Ing. Carlos Mendoza'`, fecha y hora actuales, y los comentarios de auditoría.
-   - Agrega un nuevo evento de tipo `completado` al arreglo `historial`.
-   - Lanza una notificación toast flotante de tipo `success`.
-2. `rechazarMovimiento(id: string, comentarios?: string)`:
-   - Modifica `estatus` a `'Rechazado'`.
-   - Agrega un hito de rechazo en el timeline y emite toast de advertencia.
-3. `crearMovimiento(datos: Partial<Movimiento>)`:
-   - Asigna folio incremental `SC-2026-XXXX`.
-   - Calcula `costoTotal` = `costoUnitario * cantidad`.
-   - Inicializa el historial con el registro de alta y el hito de pendiente de validación.
-   - Inserta el movimiento al principio del arreglo para reactividad inmediata.
-4. `crearMotivo`, `actualizarMotivo`, `eliminarMotivo`:
-   - Operaciones CRUD completas para el catálogo maestro de causas.
-5. `setTurnoActivo(turno: Turno)`:
-   - Cambia el turno de operación de la planta y emite notificación informativa.
-6. `resetearDatosMock()`:
-   - Elimina las claves de `localStorage` y restaura los arreglos originales de `src/mock/data.ts`.
+## 9. Modelo SQL utilizado
 
-#### Cálculo Reactivo de KPIs (`resumenKPIs`):
-Mediante un hook `useMemo`, cada alteración en los movimientos recalcula instantáneamente:
-- `scrapHoyPzas`: Suma de piezas de movimientos tipo `Scrap` generados en la fecha actual (`2026-10-20`).
-- `scrapHoyCosto`: Suma de importes en USD de las piezas enviadas a scrap hoy.
-- `pendientesAprobar`: Conteo total de movimientos con estatus `'Pendiente'`.
-- `aprobadosHoy` y `rechazadosHoy`: Conteo de resoluciones del turno.
-- `tasaScrapGeneral`: Indicador porcentual de pérdidas de manufactura vs volumen programado.
+### `dbo.Movimientos`
 
----
+El repositorio consulta `movimiento.*`, más `LineaId` y `DescripcionRazon` derivados. El conjunto físico de columnas conocido figura en [`BaseDeDatos/Diccionario_Datos_Movimientos.md`](BaseDeDatos/Diccionario_Datos_Movimientos.md). La UI/CSV conserva campos originales incluso cuando no se muestran en la tabla.
 
-## 5. Enrutamiento y Navegación (`src/App.tsx`)
+`aprobado`: `0` pendiente, `1` aprobado, `2` rechazado, `NULL` sin dictamen. `MovimientoTipoId = 1` se trata como Scrap. El nombre de tipo sale de un mapa local. Las razones descriptivas salen de `dbo.vw_Scrap_PowerBI`.
 
-La navegación está gobernada por `react-router-dom` con la siguiente topología de rutas anidadas dentro de `MainLayout`:
+### `dbo.Certificacion`
 
-```
-/
-├── /dashboard           -> DashboardPage (Tablero general y KPIs)
-├── /movimientos         -> MovimientosPage (Auditoría y tabla general)
-├── /movimientos/:id     -> MovimientoDetallePage (Detalle 360° y marbete)
-├── /aprobaciones        -> AprobacionesPage (Bandeja de supervisor)
-├── /motivos             -> MotivosPage (Catálogo CRUD)
-├── /fallas-por-linea    -> FallasPorLineaPage (Resumen Scrap por línea)
-├── /reportes            -> ReportesPage (Análisis y exportación)
-└── /configuracion       -> ConfiguracionPage (Parámetros y reset)
-```
-Cualquier ruta inválida o la raíz `/` redirige automáticamente a `/dashboard`.
+Se usa la relación `Certificacion.id` y `Certificacion.LineaId`. El catálogo de nombres de línea no se consulta; el usuario ve el identificador numérico como «Línea N».
 
----
+### Vista `dbo.vw_Scrap_PowerBI`
 
-## 6. Arquitectura de Componentes Reutilizables
+Se consultan `RAZONid`, `desc_Razon` y `MovimientoTipoId`. La vista es la fuente de las opciones por tipo y las descripciones del movimiento. Un catálogo local de motivos en frontend es independiente y no actualiza la vista.
 
-### 6.1 `Badge.tsx` (`src/components/common/Badge.tsx`)
-- Renderiza píldoras visuales con punto indicador según el estado del movimiento (`Pendiente` en ámbar, `Aprobado` en esmeralda, `Rechazado` en carmesí, `En Cuarentena` en púrpura, `Retrabajo` en azul).
-- Si recibe la propiedad `severidad`, aplica el estilo de criticidad (`Crítica`, `Alta`, `Media`, `Baja`).
+## 10. Aplicación frontend
 
-### 6.2 `Button.tsx` (`src/components/common/Button.tsx`)
-- Soporta variantes: `primary` (azul corporativo Fiori), `success` (esmeralda), `danger` (rojo industrial), `secondary` (pizarra oscuro), `outline` y `ghost`.
-- Incluye soporte nativo para icono a la izquierda o derecha, estados de carga (`loading`) con spinner animado y supresión de clics en modo inactivo (`disabled`).
+Rutas React bajo `MainLayout`:
 
-### 6.3 `Card.tsx` (`src/components/common/Card.tsx`)
-- Encapsula contenedores de información con cabecera opcional, título en mayúsculas estilo MES, subtítulo descriptivo, slot lateral de acciones y soporte para modo sin padding para tablas de ancho completo.
+| Ruta | Página | Alcance |
+|---|---|---|
+| `/dashboard` | `DashboardPage` | Filtro de fechas, indicadores, tendencia, agrupación por `CertificacionId`, Top de razones agrupadas por descripción de catálogo y exportación. |
+| `/movimientos` | `MovimientosPage` | Tabla compacta, búsqueda, filtros, orden, paginación visual, CSV. |
+| `/movimientos/:id` | `MovimientoDetallePage` | Ficha y edición persistente de razón. Usa el movimiento presente en el contexto; no hace una solicitud de detalle por separado. |
+| `/aprobaciones` | `AprobacionesPage` | Filtros, selección, revisión, dictamen individual y múltiple. |
+| `/fallas-por-linea` | `FallasPorLineaPage` | Agregado SQL, periodo, búsqueda local, barras horizontales y tabla. |
+| `/reportes` | `ReportesPage` | Filtrado y agrupación en memoria de los movimientos del contexto. |
+| `/comparativa-mensual` | `ComparativaMensualPage` | Comparación mensual SQL para cuatro gráficas, tarjetas resumen de picos, colores diferenciados por periodo y estados explícitos de error/sin datos. |
+| `/motivos` | `MotivosPage` | Catálogo local, referencia y formularios locales. |
+| `/configuracion` | `ConfiguracionPage` | Parámetros de presentación; botón de guardado solo muestra confirmación. |
 
-### 6.4 `StatCard.tsx` (`src/components/common/StatCard.tsx`)
-- Tarjeta de métrica ejecutiva inspirada en Power BI con microinteracciones al pasar el cursor (`hover: -2px y`), borde izquierdo de acento cromático, tipografía monoespaciada de gran tamaño, icono decorativo con fondo tintado e indicador de variación porcentual (`↑` o `↓`).
+`ScrapContext` carga los movimientos por periodo predeterminado. Al dictaminar se recarga ese contexto; en cambio, el rango del Dashboard se guarda localmente a su pantalla hasta usar «Último mes». El Dashboard muestra conteos/cantidades por `aprobado`, pero sus KPIs no son contadores «de hoy» necesariamente: se calculan sobre el conjunto del periodo. El KPI de costos y tasas usa valores fijos/cero por falta de integración.
 
-### 6.5 `Modal.tsx` (`src/components/common/Modal.tsx`)
-- Diálogo accesible montado sobre backdrop con desenfoque de fondo (`backdrop-blur-xs`).
-- Soporta tamaños desde `sm` hasta `4xl`.
-- Escucha global del evento de teclado `Escape` para cierre inmediato.
-- Animación de entrada y salida fluida (`scale: 0.95 -> 1.0`, `opacity: 0 -> 1`) mediante `AnimatePresence` de Framer Motion.
+Movimientos y reportes se filtran sobre los resultados cargados. El filtro visual de Reportes no amplía el periodo obtenido del backend: las fechas elegidas reducen el conjunto ya cargado. La exportación CSV consume el conjunto filtrado correspondiente y puede incluir credencial y los valores originales de la fila. El botón «Registrar incidencia» está deshabilitado. La impresión llama a `window.print()` y no genera un PDF desde backend.
 
-### 6.6 `Pagination.tsx` (`src/components/common/Pagination.tsx`)
-- Muestra el rango de registros visibles respecto al total.
-- Selector dinámico de elementos por página (10, 25 o 50).
-- Botones anterior/siguiente con bloqueo por límites de página.
+Motivos/notificaciones se inicializan de datos de `frontend/src/mock/data.ts` y se persisten en claves `localStorage` `scrap_mes_motivos_ssms_v2` y `scrap_mes_notificaciones_ssms_v2`. El reinicio borra solo esos datos locales, no los movimientos SQL. Tema y varios estados pertenecen a la interfaz.
 
-### 6.7 `ToastContainer.tsx` (`src/components/common/ToastContainer.tsx`)
-- Posicionado en la esquina inferior derecha (`fixed bottom-5 right-5`).
-- Apila notificaciones de confirmación, advertencia, peligro e información generadas desde cualquier componente mediante `agregarToast()`.
-- Se cierran automáticamente tras 4.5 segundos o manualmente mediante el botón de cierre.
+## 11. Errores, límites y despliegue
 
----
+- `GET /api/health` es una instantánea del último estado, no un chequeo por petición. Una respuesta `online` no asegura que la próxima consulta corporativa funcione.
+- La lista de movimientos no tiene paginación de servidor. El volumen del periodo se descarga a Node y se envía al frontend; filtros adicionales se aplican en memoria del backend o frontend.
+- La API corporativa es un ejecutor SQL genérico. El backend controla sus propias llamadas, pero los permisos efectivos deben restringirse en el servicio corporativo.
+- Express permite CORS `*` y no autentica usuarios. La UI no es una frontera de autorización.
+- Antes de publicar: configurar identidad, roles y auditoría; restringir CORS/orígenes; revisar redes y TLS; asegurar permisos mínimos de la API; y limitar volumen con paginación/filtrado SQL si hace falta.
+- No poner secretos en `.md`, repositorio ni logs. Mantener HTTPS y certificados confiables.
 
-## 7. Módulos y Pantallas Principales
+Para detalles de conexión y campos, consultar [Conexión a datos](BaseDeDatos/ConexionBaseDatos.md) y [Diccionario de datos](BaseDeDatos/Diccionario_Datos_Movimientos.md).
 
-### 7.1 Dashboard (`DashboardPage.tsx`)
-- **Visualización de KPIs:** 4 `StatCard` principales sincronizadas con el turno activo.
-- **Gráfica de Tendencia Horaria:** Implementada con `AreaChart` de Recharts, con gradiente SVG carmesí y tooltip oscuro de alto contraste.
-- **Razones principales de Scrap:** gráfica de barras horizontales (`BarChart`) que compara las cinco razones con mayor cantidad; no se usan gráficas tipo pastel.
-- **Gráfica de Barras por Línea:** `BarChart` con código de colores según criticidad de piezas descartadas.
-- **Modal de Registro Rápido:** Permite registrar un scrap manualmente sin salir del tablero.
+## 12. Verificación funcional ejecutada
 
-### 7.2 Registro de Movimientos (`MovimientosPage.tsx`)
-- Tabla completa de datos con las 12 columnas mandatorias: *ID, MATNR, Fecha, Credencial, Movimiento, Cantidad, Salida, Retorno, Empleado, Línea, Almacén, Estatus*.
-- Búsqueda global reactiva sin debounce agresivo para respuesta inmediata.
-- Filtros desplegables múltiples (Línea, Estatus, Tipo de Movimiento).
-- Ordenamiento bidireccional por columna al hacer clic sobre la cabecera.
+El 28 de octubre de 2026 se ejecutaron compilación backend/frontend, `npm test`, lint y pruebas HTTP contra el backend local configurado para usar la API SQL corporativa. La prueba independiente de conexión validó la base `SOE` y el prefijo de servidor `est04db`. Lecturas: `GET /api/health` respondió 200 y conectado; `/api/movimientos` respondió 200 con 2,894 filas; `/fallas-por-linea`, 200 con 4 grupos; `/razones?movimientoTipoId=1`, 200 con 57 opciones; la comparación de mayo de 2026, 200 con 805 filas agregadas; octubre respondió 200 sin agregados; y un detalle elegido de la lista respondió 200. Un intervalo válido sin filas regresó 200 y cero registros.
 
-### 7.3 Mesa de Aprobaciones (`AprobacionesPage.tsx`)
-- Presenta una tabla compacta con folio y fecha/hora de emisión, componente, razón, cantidad y acciones **Aprobar** y **Denegar** visibles.
-- Filtra movimientos pendientes por certificación y permite buscar por fecha/hora de emisión de `dbo.Movimientos.fecha_hora`; admite fragmentos como `2025-05-14 08:30`.
-- Al elegir una acción, abre una ficha de revisión con los datos disponibles del componente, movimiento, reporte, estado e historial. Cuando existe, también permite desplegar la fila original de SQL.
-- La ficha solicita el nombre del responsable y requiere confirmar antes de guardar el dictamen. La API modifica solo filas pendientes y guarda `aprobado`, `nvAprobadoPor` y `dtAprobado`; el nombre capturado no es autenticación.
-
-### 7.4 Catálogo de Motivos (`MotivosPage.tsx`)
-- Vista en cuadrícula responsiva con tarjetas de defectos.
-- Filtros por categoría de movimiento (*Scrap, Retrabajo, Calidad, etc.*) y nivel de severidad (*Crítica, Alta, Media, Baja*).
-- Formulario modal para registrar o modificar motivos, incluyendo códigos de defecto, descripciones y costo económico promedio.
-- Conmutador visual para habilitar o inhabilitar motivos en tiempo real.
-
-### 7.5 Fallas por línea (`FallasPorLineaPage.tsx`)
-- Resume movimientos con `MovimientoTipoId = 1` (Scrap), sumando `cantidad` y agrupando por `Certificacion.LineaId`.
-- El backend resuelve la relación en SQL Server: `Movimientos.CertificacionId` → `Certificacion.id` → `Certificacion.LineaId`. Filtra el periodo del 2025 y devuelve el total de piezas y movimientos por línea.
-- La pantalla presenta KPIs, una gráfica de barras, una tabla y un buscador. Las líneas se identifican por el valor real de `LineaId`; no se sustituyen por nombres o etiquetas locales no verificadas.
-
-### 7.6 Reportes e Inteligencia Operacional (`ReportesPage.tsx`)
-- Filtros por rango de fechas (`fechaInicio` y `fechaFin`), línea de ensamblado, turno y motivo específico.
-- KPIs consolidados: *Piezas Totales Afectadas, Costo Total en USD, Piezas Scrap Definitivo y Piezas Recuperadas/Retrabajo*.
-- Gráfica de barras de costo imputado por línea de producción.
-- Tabla consolidada con agrupación automática por Número de Parte (MATNR), indicando cantidad de boletas, volumen de piezas, costo acumulado y porcentaje de contribución al total de scrap.
-- Botones de exportación:
-  - `descargarCSV()`: Genera un archivo `.csv` con cabecera estándar y codificación UTF-8 con BOM para apertura transparente en Microsoft Excel.
-  - `simularImpresionPDF()`: Configura el título del documento y ejecuta `window.print()` con estilos optimizados para impresión formal.
-
-### 7.6 Ficha Técnica y Detalle de Movimiento (`MovimientoDetallePage.tsx`)
-- Acceso mediante ruta dinámica `/movimientos/:id`.
-- Desglose técnico de la pieza, orden de producción (OP), lote de bobina o materia prima y almacenes logísticos.
-- **Marbete de Scrap:** Simulación de la etiqueta viajera industrial adherida a contenedores metálicos (racks KLT), con código de barras en barras verticales SVG y espacio para firma de auditoría.
-- **Timeline de Trazabilidad:** Línea de tiempo vertical con nodos de estado que traza todo el ciclo de vida del material (registro en terminal MES, inspección visual, decisión de calidad y ajuste contable en SAP BAPI 551).
-
-### 7.7 Configuración de Planta (`ConfiguracionPage.tsx`)
-- Ajuste del nombre de la planta, división de manufactura y código SAP (Werks `1020`).
-- Estado de conexión simulada con el conector RFC de SAP S/4HANA (`BAPI_GOODSMVT_CREATE`).
-- Selección de turnos de planta (Turno 1: 06:00 - 14:30, Turno 2: 14:30 - 22:30, Turno 3: 22:30 - 06:00).
-- Configuración del umbral de scrap admisible (%) y preferencia de tema.
-- Catálogo de almacenes industriales autorizados (`ALM-01`, `ALM-02`, `ALM-05`, `ALM-12`, `ALM-99`).
-- Botón **Reiniciar Datos Mock** para restaurar los valores iniciales.
-
----
-
-## 8. Servicios y Utilidades
-
-### 8.1 Simulación SAP ERP (`src/services/scrapService.ts`)
-Encapsula la promesa de sincronización con el sistema ERP mediante la función:
-```typescript
-sincronizarConSapErp(folio: string): Promise<{ exitoso: boolean; mensajeSap: string; sapDocNum: string }>
-```
-Devuelve una confirmación con número de documento contable simulado (`DOC-SAP-551-XXXXXX`) correspondiente al movimiento de material 551 de SAP (Scrap / Baja por Desperdicio).
-
-### 8.2 Generador de Archivos CSV (`src/utils/formatters.ts`)
-La función `descargarCSV` construye una cadena con formato RFC 4180, anteponiendo el byte order mark `\uFEFF` para asegurar que tildes, caracteres especiales y números de serie se interpreten correctamente en Excel sin corrupción de caracteres. Utiliza un objeto `Blob` y un enlace virtual temporal `<a>` para disparar la descarga en el navegador sin intervención de backend.
-
----
-
-## 9. Guía de Ejecución y Mantenimiento
-
-### 9.1 Requisitos Previos
-- Node.js versión 20 o superior instalada.
-- npm versión 9 o superior.
-
-### 9.2 Instalación y Puesta en Marcha
-1. Acceder al directorio del frontend:
-   ```bash
-   cd frontend
-   ```
-2. Instalar dependencias (en caso de clonación limpia):
-   ```bash
-   npm install
-   ```
-3. Iniciar el servidor de desarrollo local:
-   ```bash
-   npm run dev
-   ```
-   El sistema quedará disponible en `http://localhost:5173/`.
-
-### 9.3 Compilación para Producción
-Para verificar la ausencia de errores de tipos y compilar los archivos optimizados para despliegue:
-```bash
-npm run build
-```
-Los archivos optimizados y minificados se generan en la carpeta `/frontend/dist`.
-
-### 9.4 Previsualización de la Versión Compilada
-```bash
-npm run preview
-```
-
----
-
-## 10. Integración actual con SQL Server
-
-El frontend consulta `GET /api/movimientos`; por defecto, el backend filtra desde SQL Server únicamente las filas de 2025 mediante `fecha_hora` (`>= 2025-01-01` y `< 2026-01-01`), sin cargar otros años. La API admite `fechaInicio` (incluyente) y `fechaFin` (excluyente), en formato `YYYY-MM-DD`, para consultas técnicas con otro rango; las vistas actuales no mandan esos parámetros. El tablero muestra de forma fija el año 2025. La respuesta conserva las columnas originales de la tabla. La interfaz presenta los campos indicados como utilizables en `Base de datos Estructura/Estructura.txt`; los campos marcados como ignorados o pendientes no se utilizan todavía.
-
-La bandeja presenta solicitudes en una tabla compacta y permite buscar por una parte de la fecha/hora original (`fecha_hora`), además de filtrar por certificación. Al seleccionar **Aprobar** o **Denegar**, abre una ficha con la información disponible del componente antes de solicitar confirmación. La ficha presenta campos del modelo de UI y, si el API proporcionó la fila original, permite desplegar sus columnas de SQL. La acción envía `PATCH /api/movimientos/:id/dictamen`; la API exige una decisión válida y el nombre del responsable, modifica solo filas con `aprobado = 0`, guarda la decisión en `aprobado`, el nombre en `nvAprobadoPor` y la hora del servidor SQL en `dtAprobado`. Las altas de movimientos, catálogos en vivo y la integración con SAP siguen pendientes.
-
-El nombre del responsable es ingresado manualmente y no autentica al empleado. La API no tiene autenticación/autorización de usuario implementada; antes de exponer esta acción fuera de un entorno controlado, integrar identidad y restringir el acceso de red y de base de datos. Los dictámenes se guardan en datos reales y no se revierten por la interfaz.
+Se comprobó `npm test` (prueba de validación de IDs), además de casos HTTP inválidos de fechas, mes, ID y cuerpos de dictamen/razón; se rechazaron con 400 antes de escribir. La prueba detectó que `GET /api/movimientos/:id` aceptaba prefijos numéricos seguidos de texto por el uso de `parseInt`; se cambió a validación de ID positivo completo y seguro, y después se confirmó que un ID malformado y cero responden 400. No se probó una escritura válida ni dictamen individual/múltiple contra la base real. La interfaz compila, pero esos cambios persistentes requieren una base de pruebas aislada para validar el ciclo completo sin alterar movimientos corporativos. No hay navegador/framework E2E instalado: no se automatizaron interacciones visuales, CSV ni impresión. El lint completo terminó con advertencias en los contextos preexistentes `ScrapContext.tsx` y `ThemeContext.tsx`, no en las páginas modificadas.

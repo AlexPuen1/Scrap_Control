@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Check,
   Database,
@@ -36,13 +36,17 @@ const CampoDato: React.FC<{ etiqueta: string; valor: string | number | boolean |
 );
 
 export const AprobacionesPage: React.FC = () => {
-  const { movimientos, razonesCatalogo, aprobarMovimiento, rechazarMovimiento } = useScrap();
-  const descripcionPorRazon = useMemo(
-    () => new Map(razonesCatalogo.map((razon) => [razon.idRazon, razon.descripcion])),
-    [razonesCatalogo],
-  );
+  const { movimientos, aprobarMovimiento, dictaminarMovimientos, rechazarMovimiento } = useScrap();
   const [filtroCertificacion, setFiltroCertificacion] = useState('');
+  const [busquedaLinea, setBusquedaLinea] = useState('');
   const [busquedaFechaHora, setBusquedaFechaHora] = useState('');
+  const [seleccionados, setSeleccionados] = useState<string[]>([]);
+  const [modalDictamenMultiple, setModalDictamenMultiple] = useState(false);
+  const [decisionMultiple, setDecisionMultiple] = useState<Decision>(1);
+  const [nombreResponsableMultiple, setNombreResponsableMultiple] = useState('');
+  const [errorAprobacionMultiple, setErrorAprobacionMultiple] = useState<string | null>(null);
+  const [idsFallidos, setIdsFallidos] = useState<string[]>([]);
+  const [aprobacionMultipleEnviando, setAprobacionMultipleEnviando] = useState(false);
   const [revision, setRevision] = useState<Revision | null>(null);
   const [nombreResponsable, setNombreResponsable] = useState('');
   const [dictamenEnviando, setDictamenEnviando] = useState(false);
@@ -52,13 +56,58 @@ export const AprobacionesPage: React.FC = () => {
     const esPendiente = movimiento.aprobado === 0 || movimiento.estatus === 'Pendiente';
     const coincideCertificacion = filtroCertificacion === ''
       || String(movimiento.certificacionId) === filtroCertificacion;
+    const linea = movimiento.linea.toLocaleLowerCase();
+    const coincideLinea = busquedaLinea.trim() === ''
+      || linea.includes(busquedaLinea.trim().toLocaleLowerCase())
+      || String(movimiento.datosDB?.LineaId ?? '').includes(busquedaLinea.trim());
     const fechaHora = (movimiento.fechaHora || `${movimiento.fecha} ${movimiento.hora}`)
       .replace('T', ' ')
       .toLocaleLowerCase();
     const coincideFechaHora = busquedaFechaHora.trim() === ''
       || fechaHora.includes(busquedaFechaHora.trim().replace('T', ' ').toLocaleLowerCase());
-    return esPendiente && coincideCertificacion && coincideFechaHora;
+    return esPendiente && coincideCertificacion && coincideLinea && coincideFechaHora;
   });
+  const idsPendientesVisibles = pendientes.map((movimiento) => movimiento.id);
+  const seleccionadosVisibles = seleccionados.filter((id) => idsPendientesVisibles.includes(id));
+  const todosVisiblesSeleccionados = idsPendientesVisibles.length > 0
+    && idsPendientesVisibles.every((id) => seleccionados.includes(id));
+
+  const alternarSeleccionTodos = (seleccionar: boolean) => {
+    setSeleccionados((actuales) => {
+      const noVisibles = actuales.filter((id) => !idsPendientesVisibles.includes(id));
+      return seleccionar ? [...noVisibles, ...idsPendientesVisibles] : noVisibles;
+    });
+  };
+
+  const alternarSeleccionMovimiento = (id: string, seleccionar: boolean) => {
+    setSeleccionados((actuales) => seleccionar
+      ? [...new Set([...actuales, id])]
+      : actuales.filter((seleccionado) => seleccionado !== id));
+  };
+
+  const confirmarAprobacionMultiple = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const responsable = nombreResponsableMultiple.trim();
+    if (!responsable) {
+      setErrorAprobacionMultiple('Captura el nombre del responsable para continuar.');
+      return;
+    }
+
+    setAprobacionMultipleEnviando(true);
+    setErrorAprobacionMultiple(null);
+    setIdsFallidos([]);
+    try {
+      const resultado = await dictaminarMovimientos(seleccionadosVisibles, decisionMultiple, responsable);
+      setIdsFallidos(resultado.fallidos.map(({ id }) => id));
+      setSeleccionados(resultado.fallidos.map(({ id }) => id));
+      if (resultado.fallidos.length === 0) setModalDictamenMultiple(false);
+      else setErrorAprobacionMultiple(`${resultado.dictaminados.length} ${decisionMultiple === 1 ? 'aprobado(s)' : 'rechazado(s)'}; ${resultado.fallidos.length} no se pudieron procesar. Los fallidos siguen seleccionados.`);
+    } catch (error) {
+      setErrorAprobacionMultiple(error instanceof Error ? error.message : 'No se pudo completar la aprobación múltiple.');
+    } finally {
+      setAprobacionMultipleEnviando(false);
+    }
+  };
 
   const abrirRevision = (movimiento: Movimiento, decision: Decision) => {
     setRevision({ movimiento, decision });
@@ -104,7 +153,7 @@ export const AprobacionesPage: React.FC = () => {
     ? 'Sin razón'
     : movimientoRevision?.razonId === undefined
       ? 'No disponible'
-      : `${movimientoRevision.razonId} - ${descripcionPorRazon.get(movimientoRevision.razonId) || movimientoRevision.motivoEspecifico || 'Descripción no disponible'}`;
+      : movimientoRevision.descripcionRazon || movimientoRevision.motivoEspecifico || 'Descripción no disponible';
 
   return (
     <div className="space-y-5">
@@ -145,6 +194,18 @@ export const AprobacionesPage: React.FC = () => {
             ))}
           </select>
         </div>
+        <div className="flex min-w-[200px] flex-1 items-center gap-2 text-xs sm:max-w-xs">
+          <Search className="h-4 w-4 shrink-0 text-slate-400" />
+          <label htmlFor="busqueda-linea" className="sr-only">Buscar por línea</label>
+          <input
+            id="busqueda-linea"
+            type="search"
+            value={busquedaLinea}
+            onChange={(event) => setBusquedaLinea(event.target.value)}
+            placeholder="Buscar por línea"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          />
+        </div>
         <div className="flex min-w-[240px] flex-1 items-center gap-2 text-xs sm:max-w-md">
           <Search className="h-4 w-4 shrink-0 text-slate-400" />
           <label htmlFor="busqueda-fecha-hora" className="sr-only">Buscar por fecha y hora de emisión</label>
@@ -163,12 +224,60 @@ export const AprobacionesPage: React.FC = () => {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+          <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <input
+              type="checkbox"
+              checked={todosVisiblesSeleccionados}
+              disabled={pendientes.length === 0 || aprobacionMultipleEnviando}
+              onChange={(event) => alternarSeleccionTodos(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            Seleccionar todas las pendientes visibles ({pendientes.length})
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="success"
+              size="sm"
+              icon={<Check className="h-3.5 w-3.5" />}
+              disabled={seleccionadosVisibles.length === 0 || aprobacionMultipleEnviando}
+              onClick={() => {
+                setDecisionMultiple(1);
+                setNombreResponsableMultiple('');
+                setErrorAprobacionMultiple(null);
+                setIdsFallidos([]);
+                setModalDictamenMultiple(true);
+              }}
+            >
+              Aprobar seleccionadas ({seleccionadosVisibles.length})
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              icon={<X className="h-3.5 w-3.5" />}
+              disabled={seleccionadosVisibles.length === 0 || aprobacionMultipleEnviando}
+              onClick={() => {
+                setDecisionMultiple(2);
+                setNombreResponsableMultiple('');
+                setErrorAprobacionMultiple(null);
+                setIdsFallidos([]);
+                setModalDictamenMultiple(true);
+              }}
+            >
+              Rechazar seleccionadas ({seleccionadosVisibles.length})
+            </Button>
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-left text-xs">
             <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400">
               <tr>
+                <th className="w-10 px-3 py-3">
+                  <span className="sr-only">Seleccionar movimiento</span>
+                </th>
                 <th className="px-4 py-3">Folio / emisión</th>
                 <th className="px-4 py-3">Componente</th>
+                <th className="px-4 py-3">Línea</th>
                 <th className="px-4 py-3">Razón</th>
                 <th className="px-4 py-3 text-right">Cantidad</th>
                 <th className="px-4 py-3 text-center">Dictamen</th>
@@ -177,11 +286,11 @@ export const AprobacionesPage: React.FC = () => {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {pendientes.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center">
+                  <td colSpan={7} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center gap-2 text-slate-400">
                       <FileCheck2 className="h-10 w-10 text-emerald-500/70" />
                       <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                        {busquedaFechaHora || filtroCertificacion
+                        {busquedaFechaHora || filtroCertificacion || busquedaLinea
                           ? 'No hay solicitudes que coincidan con los filtros.'
                           : '¡Todo al día! No hay solicitudes pendientes.'}
                       </p>
@@ -190,6 +299,16 @@ export const AprobacionesPage: React.FC = () => {
                 </tr>
               ) : pendientes.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                  <td className="px-3 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Seleccionar movimiento ${item.id}`}
+                      checked={seleccionados.includes(item.id)}
+                      disabled={aprobacionMultipleEnviando}
+                      onChange={(event) => alternarSeleccionMovimiento(item.id, event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="font-mono font-bold text-blue-600 dark:text-blue-400">#{item.id}</div>
                     <div className="mt-0.5 whitespace-nowrap font-mono text-[10px] text-slate-500 dark:text-slate-400">
@@ -200,11 +319,14 @@ export const AprobacionesPage: React.FC = () => {
                     <div className="truncate font-mono font-bold text-slate-800 dark:text-slate-200" title={item.matnr}>{item.matnr}</div>
                     <div className="truncate text-[11px] text-slate-500 dark:text-slate-400" title={item.descripcion}>{item.descripcion || item.serial}</div>
                   </td>
+                  <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">
+                    {item.linea || 'Sin línea asignada'}
+                  </td>
                   <td className="max-w-[220px] px-4 py-3">
                     <div className="flex items-center gap-1.5">
                       <Tag className="h-3.5 w-3.5 shrink-0 text-amber-500" />
                       <span className="truncate text-slate-700 dark:text-slate-300" title={razonRevision}>
-                        {item.razonId === null ? 'Sin razón' : `${item.razonId} · ${descripcionPorRazon.get(item.razonId) || item.motivoEspecifico || 'Sin descripción'}`}
+                        {item.razonId === null ? 'Sin razón' : item.descripcionRazon || item.motivoEspecifico || 'Descripción no disponible'}
                       </span>
                     </div>
                     <div className="mt-0.5 pl-5 text-[10px] text-slate-500 dark:text-slate-400">{item.movimientoTipoId} · {item.movimientoTipo}</div>
@@ -240,6 +362,64 @@ export const AprobacionesPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      <Modal
+        isOpen={modalDictamenMultiple}
+        onClose={() => {
+          if (!aprobacionMultipleEnviando) setModalDictamenMultiple(false);
+        }}
+        title={decisionMultiple === 1 ? 'Confirmar aprobación múltiple' : 'Confirmar rechazo múltiple'}
+        subtitle={`${seleccionadosVisibles.length} movimiento(s) seleccionado(s)`}
+        maxWidth="md"
+      >
+        <form onSubmit={confirmarAprobacionMultiple} className="space-y-4">
+          <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+            {decisionMultiple === 1
+              ? 'Se aprobarán los movimientos seleccionados.'
+              : 'Se rechazarán los movimientos seleccionados.'} El cambio se guardará en la base de datos y no se puede deshacer desde la aplicación.
+          </p>
+          <label htmlFor="responsable-aprobacion-multiple" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+            Nombre del responsable
+            <input
+              id="responsable-aprobacion-multiple"
+              type="text"
+              required
+              maxLength={200}
+              value={nombreResponsableMultiple}
+              onChange={(event) => setNombreResponsableMultiple(event.target.value)}
+              disabled={aprobacionMultipleEnviando}
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            />
+          </label>
+          {idsFallidos.length > 0 && (
+            <p className="text-xs text-rose-700 dark:text-rose-300">
+              Folios con error: {idsFallidos.join(', ')}.
+            </p>
+          )}
+          {errorAprobacionMultiple && (
+            <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">{errorAprobacionMultiple}</p>
+          )}
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={aprobacionMultipleEnviando}
+              onClick={() => setModalDictamenMultiple(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              variant={decisionMultiple === 1 ? 'success' : 'danger'}
+              disabled={aprobacionMultipleEnviando || seleccionadosVisibles.length === 0}
+            >
+              {aprobacionMultipleEnviando
+                ? (decisionMultiple === 1 ? 'Aprobando…' : 'Rechazando…')
+                : `Confirmar ${decisionMultiple === 1 ? 'aprobación' : 'rechazo'} de ${seleccionadosVisibles.length}`}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal
         isOpen={!!revision}

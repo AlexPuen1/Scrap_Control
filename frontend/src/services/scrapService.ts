@@ -1,6 +1,5 @@
-import type { Movimiento, MovimientoDB, Motivo, Notificacion, RazonCatalogo, MovimientoTipoCatalogo, CertificacionCatalogo, ResumenScrapLinea } from '../types';
-import { MOTIVOS_INICIALES, NOTIFICACIONES_INICIALES, RAZONES_SSMS } from '../mock/data';
-import { MOVIMIENTO_TIPOS_SSMS, CERTIFICACIONES_PLANTA } from '../constants';
+import type { ComparativaMensual, Movimiento, MovimientoDB, OpcionRazon, ReporteScrapLinea } from '../types';
+import { MOVIMIENTO_TIPOS_SSMS } from '../constants';
 
 function adaptarMovimiento(row: MovimientoDB): Movimiento {
   const fechaHora = row.fecha_hora.replace(' ', 'T').slice(0, 19);
@@ -32,14 +31,15 @@ function adaptarMovimiento(row: MovimientoDB): Movimiento {
     retorno: row.retorno,
     aprobado: row.aprobado,
     razonId: row.RazonId,
-    motivoEspecifico: '',
+    descripcionRazon: row.DescripcionRazon || '',
+    motivoEspecifico: row.DescripcionRazon || '',
     almacen: row.almacen || '',
     serial: row.serial || '',
     nvAprobadoPor: row.nvAprobadoPor || undefined,
     dtAprobado: row.dtAprobado || undefined,
     empleado: '',
     descripcion: '',
-    linea: '',
+    linea: row.LineaId === null || row.LineaId === undefined ? 'Sin línea asignada' : `Línea ${row.LineaId}`,
     estatus,
     unidad: 'PZA',
     costoUnitario: 0,
@@ -50,8 +50,14 @@ function adaptarMovimiento(row: MovimientoDB): Movimiento {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
-async function solicitarMovimientos(): Promise<Movimiento[]> {
-  const response = await fetch(`${API_BASE}/movimientos`);
+async function solicitarMovimientos(fechaInicio?: string, fechaFin?: string): Promise<Movimiento[]> {
+  const parametros = new URLSearchParams();
+  if (fechaInicio && fechaFin) {
+    parametros.set('fechaInicio', fechaInicio);
+    parametros.set('fechaFin', fechaFin);
+  }
+  const query = parametros.size > 0 ? `?${parametros.toString()}` : '';
+  const response = await fetch(`${API_BASE}/movimientos${query}`);
   const body = await response.json() as { exitoso: boolean; datos?: MovimientoDB[]; mensaje?: string };
   if (!response.ok || !body.exitoso || !body.datos) {
     throw new Error(body.mensaje || `No se pudieron cargar los movimientos (HTTP ${response.status}).`);
@@ -71,67 +77,68 @@ async function enviarDictamen(id: string, aprobado: 1 | 2, aprobadoPor: string):
   }
 }
 
-async function solicitarScrapPorLinea(): Promise<ResumenScrapLinea[]> {
+async function solicitarScrapPorLinea(): Promise<ReporteScrapLinea> {
   const response = await fetch(`${API_BASE}/movimientos/fallas-por-linea`);
-  const body = await response.json() as { exitoso: boolean; datos?: ResumenScrapLinea[]; mensaje?: string };
-  if (!response.ok || !body.exitoso || !body.datos) {
+  const body = await response.json() as {
+    exitoso: boolean;
+    datos?: ReporteScrapLinea['datos'];
+    periodo?: ReporteScrapLinea['periodo'];
+    mensaje?: string;
+  };
+  if (!response.ok || !body.exitoso || !body.datos || body.periodo === undefined) {
     throw new Error(body.mensaje || `No se pudo cargar Scrap por línea (HTTP ${response.status}).`);
+  }
+  return { datos: body.datos, periodo: body.periodo };
+}
+
+async function solicitarComparativaMensual(mes: string): Promise<ComparativaMensual> {
+  const parametros = new URLSearchParams({ mes });
+  const response = await fetch(`${API_BASE}/movimientos/comparativa-mensual?${parametros.toString()}`);
+  const body = await response.json() as {
+    exitoso: boolean;
+    periodos?: ComparativaMensual['periodos'];
+    datos?: ComparativaMensual['datos'];
+    mensaje?: string;
+  };
+  if (!response.ok || !body.exitoso || !body.periodos || !body.datos) {
+    throw new Error(body.mensaje || `No se pudo comparar el mes seleccionado (HTTP ${response.status}).`);
+  }
+  return { periodos: body.periodos, datos: body.datos };
+}
+
+async function solicitarRazones(movimientoTipoId: number): Promise<OpcionRazon[]> {
+  const parametros = new URLSearchParams({ movimientoTipoId: String(movimientoTipoId) });
+  const response = await fetch(`${API_BASE}/movimientos/razones?${parametros.toString()}`);
+  const body = await response.json() as { exitoso: boolean; datos?: OpcionRazon[]; mensaje?: string };
+  if (!response.ok || !body.exitoso || !body.datos) {
+    throw new Error(body.mensaje || `No se pudieron cargar las opciones de razón (HTTP ${response.status}).`);
   }
   return body.datos;
 }
 
-/**
- * Movimientos se leen de SQL Server. Los catálogos secundarios siguen siendo locales
- * hasta que se acuerde integrar sus tablas. Los dictámenes se guardan en SQL Server.
- */
+async function enviarActualizacionRazon(id: string, razonId: number | null): Promise<Movimiento> {
+  const response = await fetch(`${API_BASE}/movimientos/${encodeURIComponent(id)}/razon`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ razonId }),
+  });
+  const body = await response.json() as { exitoso: boolean; datos?: MovimientoDB; mensaje?: string };
+  if (!response.ok || !body.exitoso || !body.datos) {
+    throw new Error(body.mensaje || `No se pudo actualizar la razón (HTTP ${response.status}).`);
+  }
+  return adaptarMovimiento(body.datos);
+}
+
+/** El frontend consume el backend; la llamada a la API corporativa queda solo en servidor. */
 export const ScrapService = {
-  obtenerMovimientos: () => solicitarMovimientos(),
+  obtenerMovimientos: (fechaInicio?: string, fechaFin?: string) => solicitarMovimientos(fechaInicio, fechaFin),
 
   obtenerScrapPorLinea: () => solicitarScrapPorLinea(),
+  obtenerComparativaMensual: (mes: string) => solicitarComparativaMensual(mes),
+  obtenerRazones: (movimientoTipoId: number) => solicitarRazones(movimientoTipoId),
+  actualizarRazon: (id: string, razonId: number | null) => enviarActualizacionRazon(id, razonId),
 
   aprobarMovimiento: (id: string, aprobadoPor: string) => enviarDictamen(id, 1, aprobadoPor),
 
   rechazarMovimiento: (id: string, aprobadoPor: string) => enviarDictamen(id, 2, aprobadoPor),
-
-  obtenerMotivos: async (): Promise<Motivo[]> => {
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(MOTIVOS_INICIALES), 80);
-    });
-  },
-
-  obtenerRazonesCatalogo: async (): Promise<RazonCatalogo[]> => {
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(RAZONES_SSMS), 80);
-    });
-  },
-
-  obtenerTiposMovimiento: async (): Promise<MovimientoTipoCatalogo[]> => {
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(MOVIMIENTO_TIPOS_SSMS), 50);
-    });
-  },
-
-  obtenerCertificaciones: async (): Promise<CertificacionCatalogo[]> => {
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(CERTIFICACIONES_PLANTA), 50);
-    });
-  },
-
-  obtenerNotificaciones: async (): Promise<Notificacion[]> => {
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(NOTIFICACIONES_INICIALES), 50);
-    });
-  },
-
-  sincronizarConSapErp: async (serial: string): Promise<{ exitoso: boolean; mensajeSap: string; sapDocNum: string }> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          exitoso: true,
-          mensajeSap: `Documento de material 49000${Math.floor(1000 + Math.random() * 9000)} generado vía BAPI_GOODSMVT_CREATE para folio serial ${serial}.`,
-          sapDocNum: `DOC-SAP-551-${Math.floor(100000 + Math.random() * 900000)}`,
-        });
-      }, 250);
-    });
-  },
 };

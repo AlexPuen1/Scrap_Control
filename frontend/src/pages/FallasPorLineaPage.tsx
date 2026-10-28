@@ -12,11 +12,12 @@ import {
 } from 'recharts';
 import { Card } from '../components/common/Card';
 import { ScrapService } from '../services/scrapService';
-import type { ResumenScrapLinea } from '../types';
+import type { ReporteScrapLinea, ResumenScrapLinea } from '../types';
 import { formatearNumero } from '../utils/formatters';
 
 export const FallasPorLineaPage: React.FC = () => {
   const [resumenPorLinea, setResumenPorLinea] = useState<ResumenScrapLinea[]>([]);
+  const [periodo, setPeriodo] = useState<ReporteScrapLinea['periodo']>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState('');
@@ -27,11 +28,15 @@ export const FallasPorLineaPage: React.FC = () => {
 
     ScrapService.obtenerScrapPorLinea()
       .then((datos) => {
-        if (vigente) setResumenPorLinea(datos);
+        if (vigente) {
+          setResumenPorLinea(datos.datos);
+          setPeriodo(datos.periodo);
+        }
       })
       .catch((errorCarga: unknown) => {
         if (vigente) {
           setResumenPorLinea([]);
+          setPeriodo(null);
           setError(errorCarga instanceof Error ? errorCarga.message : 'No se pudo cargar Scrap por línea.');
         }
       })
@@ -98,12 +103,13 @@ export const FallasPorLineaPage: React.FC = () => {
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <p>
           La relación se obtiene de SQL Server: `Movimientos.CertificacionId` → `Certificacion.id` →
-          {' '}`Certificacion.LineaId`. El reporte incluye los movimientos Scrap del año 2025.
+          {' '}`Certificacion.LineaId`. El reporte incluye el mes más reciente disponible
+          {periodo ? ` (${periodo.fechaInicio} – ${periodo.fechaFin})` : '.'}
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card title="Piezas Scrap" subtitle="Total de líneas en 2025">
+        <Card title="Piezas Scrap" subtitle={periodo ? `Periodo: ${periodo.fechaInicio} – ${periodo.fechaFin}` : 'Sin periodo disponible'}>
           <p className="text-2xl font-bold text-rose-600 dark:text-rose-400">
             {formatearNumero(totalPiezasScrap)}
           </p>
@@ -123,7 +129,7 @@ export const FallasPorLineaPage: React.FC = () => {
 
       <Card
         title="Piezas defectuosas por línea"
-        subtitle="Suma de cantidad para movimientos Scrap, relacionada mediante Certificacion.LineaId."
+        subtitle={`Periodo: ${periodo ? `${periodo.fechaInicio} – ${periodo.fechaFin}` : 'sin datos'}. Suma de cantidad para movimientos Scrap, relacionada mediante Certificacion.LineaId.`}
       >
         {resumenPorLinea.length === 0 ? (
           <div className="py-12 text-center text-sm text-slate-500">
@@ -156,7 +162,12 @@ export const FallasPorLineaPage: React.FC = () => {
                       margin={{ top: 4, right: 20, left: 12, bottom: 4 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#cbd5e1" strokeOpacity={0.4} />
-                      <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                      <XAxis
+                        type="number"
+                        tick={{ fontSize: 11, fill: '#64748b' }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
                       <YAxis
                         type="category"
                         dataKey="lineaId"
@@ -168,7 +179,10 @@ export const FallasPorLineaPage: React.FC = () => {
                       />
                       <Tooltip
                         labelFormatter={(value) => nombreLinea(value === '' ? null : Number(value))}
-                        formatter={(value) => [`${value} piezas`, 'Scrap']}
+                        formatter={(value: any) => [
+                          <span key="value" className="text-white">{value} piezas</span>,
+                          <span key="name" className="text-white">Scrap</span>,
+                        ]}
                         contentStyle={{
                           backgroundColor: '#0f172a',
                           borderColor: '#334155',
@@ -176,6 +190,8 @@ export const FallasPorLineaPage: React.FC = () => {
                           color: '#f8fafc',
                           fontSize: '12px',
                         }}
+                        labelStyle={{ color: '#ffffff' }}
+                        itemStyle={{ color: '#ffffff' }}
                       />
                       <Bar dataKey="piezasScrap" name="Piezas Scrap" radius={[0, 6, 6, 0]}>
                         {lineasFiltradas.map((fila, index) => (

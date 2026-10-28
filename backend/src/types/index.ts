@@ -13,6 +13,7 @@ export interface MovimientoDB {
   procesado?: number | null;
   aprobado: number | null; // 0: Pendiente, 1: Aprobado, 2: Rechazado
   RazonId: number | null;
+  DescripcionRazon?: string | null;
   centro_costo: string | null;
   almacen: string | null;
   serial: string | null;
@@ -23,6 +24,7 @@ export interface MovimientoDB {
 
 export interface MovimientoDetalleDTO extends MovimientoDB {
   MovimientoTipoNombre?: string;
+  LineaId?: number | null;
 }
 
 export interface ResumenScrapLineaDB {
@@ -31,31 +33,30 @@ export interface ResumenScrapLineaDB {
   piezasScrap: number;
 }
 
-export interface MovimientoTipoDB {
-  id: number;
-  nombre: string;
-  descripcion?: string | null;
-  activo: boolean;
+export interface ResumenScrapLineaReporte {
+  periodo: { fechaInicio: string; fechaFin: string } | null;
+  datos: ResumenScrapLineaDB[];
 }
 
-export interface RazonDB {
-  Id?: number;
-  IdMovimiento?: number | null;
-  IdRazon: number;
-  Descripcion: string;
-  CC_Sugerido?: string | null;
-  Notifica?: string | null;
-  PuntaCola?: string | null;
-  activo?: boolean;
+export interface ComparativaMensualDB {
+  grafica: 'tendencia' | 'certificacion' | 'razon' | 'linea';
+  periodo: 'actual' | 'anterior';
+  categoria: string;
+  movimientos: number;
+  piezas: number;
 }
 
-export interface CertificacionDB {
+export interface ComparativaMensualReporte {
+  periodos: {
+    actual: { fechaInicio: string; fechaFin: string };
+    anterior: { fechaInicio: string; fechaFin: string };
+  };
+  datos: ComparativaMensualDB[];
+}
+
+export interface OpcionRazonDB {
   id: number;
-  nombre: string;
-  linea?: string;
-  estacion?: string;
-  ubicacion?: string;
-  activo: boolean;
+  descripcion: string;
 }
 
 export interface FiltrosMovimientosQuery {

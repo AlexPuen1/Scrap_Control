@@ -1,122 +1,143 @@
 import dotenv from 'dotenv';
-import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type * as Sql from 'mssql';
 
-const require = createRequire(import.meta.url);
-const sql = require('mssql/msnodesqlv8') as typeof import('mssql');
 const databaseDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../BaseDeDatos');
 dotenv.config({ path: path.join(databaseDirectory, '.env') });
 
-const autenticacion = (process.env.DB_AUTHENTICATION || 'windows').toLowerCase();
+const apiBaseUrl = (process.env.DB_API_BASE_URL || 'https://est02des.magna.global/est_api').replace(/\/+$/, '');
 const servidor = process.env.DB_SERVER || 'est04db';
 const baseDeDatos = process.env.DB_DATABASE || 'SOE';
-const puerto = process.env.DB_PORT || '1433';
-const confiarCertificado = process.env.DB_TRUST_SERVER_CERTIFICATE !== 'false';
-const cifrado = process.env.DB_ENCRYPT === 'true';
-const controlador = process.env.DB_DRIVER || 'ODBC Driver 17 for SQL Server';
-const tiempoConexion = Number.parseInt(process.env.DB_CONNECTION_TIMEOUT || '5000', 10);
-const tiempoConsulta = Number.parseInt(process.env.DB_REQUEST_TIMEOUT || '15000', 10);
+const tiempoConsulta = Number.parseInt(process.env.DB_API_TIMEOUT || '20000', 10);
 
-interface MsnodesqlConfig extends Sql.config {
-  connectionString: string;
+interface ResultadoSQL<T> {
+  success: boolean;
+  message?: string;
+  affectedRows?: number;
+  rows?: T[];
 }
 
-if (autenticacion !== 'windows' && autenticacion !== 'sql') {
-  throw new Error('DB_AUTHENTICATION debe ser "windows" o "sql".');
-}
-
-if (autenticacion === 'sql' && (!process.env.DB_USER || !process.env.DB_PASSWORD)) {
-  throw new Error('La autenticación SQL requiere DB_USER y DB_PASSWORD en BaseDeDatos/.env.');
-}
-
-function valorOdbc(valor: string): string {
-  return `{${valor.replace(/}/g, '}}')}}`;
-}
-
-const parametrosConexion = [
-  `Driver=${valorOdbc(controlador)}`,
-  `Server=${servidor},${puerto}`,
-  `Database=${valorOdbc(baseDeDatos)}`,
-  autenticacion === 'windows'
-    ? 'Trusted_Connection=Yes'
-    : `UID=${valorOdbc(process.env.DB_USER || '')};PWD=${valorOdbc(process.env.DB_PASSWORD || '')}`,
-  `Encrypt=${cifrado ? 'Yes' : 'No'}`,
-  `TrustServerCertificate=${confiarCertificado ? 'Yes' : 'No'}`,
-].join(';');
-
-export const dbConfig: MsnodesqlConfig = {
-  server: servidor,
-  port: Number.parseInt(puerto, 10),
-  database: baseDeDatos,
-  connectionString: parametrosConexion,
-  connectionTimeout: tiempoConexion,
-  requestTimeout: tiempoConsulta,
-  options: {
-    encrypt: cifrado,
-    trustServerCertificate: confiarCertificado,
-    trustedConnection: autenticacion === 'windows',
-    enableArithAbort: true,
-  },
-  pool: {
-    max: 10,
-    min: 0,
-    idleTimeoutMillis: 30000,
-  },
-};
-
-let pool: Sql.ConnectionPool | null = null;
 let estaConectado = false;
 let ultimoError: string | null = null;
 
-export async function conectarSQLServer(): Promise<Sql.ConnectionPool | null> {
-  if (pool?.connected) {
-    estaConectado = true;
-    return pool;
-  }
-
+async function ejecutarComandoSQL<T>(command: string): Promise<ResultadoSQL<T>> {
+  let response: Response;
   try {
-    console.log(`🔌 [SQL Server] Conectando a ${servidor}:${puerto}/${baseDeDatos}...`);
-    pool = await new sql.ConnectionPool(dbConfig).connect();
-    estaConectado = true;
-    ultimoError = null;
-    console.log('✅ [SQL Server] Conexión establecida.');
-    return pool;
+    response = await fetch(`${apiBaseUrl}/api/Utility/executeSQLCommand`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ server: servidor, db: baseDeDatos, command }),
+      signal: AbortSignal.timeout(tiempoConsulta),
+    });
   } catch (error) {
     estaConectado = false;
-    pool = null;
-    ultimoError = error instanceof Error ? error.message : 'Error desconocido al conectar a SQL Server';
-    console.error(`❌ [SQL Server] No se pudo conectar: ${ultimoError}`);
-    return null;
+    ultimoError = error instanceof Error ? error.message : 'No fue posible comunicarse con la API corporativa.';
+    throw error;
   }
-}
 
-export async function obtenerPool(): Promise<Sql.ConnectionPool | null> {
-  if (!pool?.connected) {
-    return conectarSQLServer();
+  const contenido = await response.text();
+  let resultado: ResultadoSQL<T>;
+  try {
+    resultado = JSON.parse(contenido) as ResultadoSQL<T>;
+  } catch {
+    throw new Error(`La API SQL respondió con un formato no JSON (HTTP ${response.status}).`);
   }
-  return pool;
-}
 
-export async function cerrarConexionSQLServer(): Promise<void> {
-  if (pool) {
-    await pool.close();
-    pool = null;
+  if (!response.ok || resultado.success !== true) {
     estaConectado = false;
-    console.log('🔒 [SQL Server] Conexión cerrada.');
+    ultimoError = resultado.message || `La API SQL respondió HTTP ${response.status}.`;
+    throw new Error(resultado.message || `La API SQL respondió HTTP ${response.status}.`);
   }
+  estaConectado = true;
+  ultimoError = null;
+  return resultado;
+}
+
+export async function consultarSQL<T>(command: string): Promise<T[]> {
+  if (!/^\s*SELECT\b/i.test(command) || /;|--|\/\*|\*\//.test(command)) {
+    throw new Error('Solo se permiten consultas SELECT de una sola instrucción.');
+  }
+  const resultado = await ejecutarComandoSQL<T>(command);
+  return resultado.rows || [];
+}
+
+export async function actualizarDictamenSQL(
+  id: number,
+  aprobado: 1 | 2,
+  aprobadoPor: string,
+): Promise<number> {
+  if (!Number.isSafeInteger(id) || id < 1 || (aprobado !== 1 && aprobado !== 2)) {
+    throw new Error('Los datos del dictamen no son válidos.');
+  }
+  if (aprobadoPor.length === 0 || aprobadoPor.length > 200) {
+    throw new Error('El nombre del responsable debe tener entre 1 y 200 caracteres.');
+  }
+
+  const nombreSQL = aprobadoPor.replace(/'/g, "''");
+  const resultado = await ejecutarComandoSQL<never>(`
+    UPDATE dbo.Movimientos
+    SET aprobado = ${aprobado},
+        nvAprobadoPor = N'${nombreSQL}',
+        dtAprobado = GETDATE()
+    WHERE id = ${id} AND aprobado = 0
+  `);
+  return resultado.affectedRows ?? -1;
+}
+
+export async function actualizarRazonSQL(id: number, razonId: number | null): Promise<number> {
+  if (!Number.isSafeInteger(id) || id < 1
+    || (razonId !== null && (!Number.isSafeInteger(razonId) || razonId < 1))) {
+    throw new Error('Los datos de la razón no son válidos.');
+  }
+
+  const resultado = await ejecutarComandoSQL<never>(`
+    UPDATE dbo.Movimientos
+    SET RazonId = ${razonId === null ? 'NULL' : razonId}
+    WHERE id = ${id}
+  `);
+  return resultado.affectedRows ?? -1;
+}
+
+export async function probarConexionSQLServer(): Promise<{ exitoso: boolean; baseDeDatos?: string; mensaje: string }> {
+  try {
+    const [resultado] = await consultarSQL<{ baseActual: string; servidorActual: string }>(
+      'SELECT DB_NAME() AS baseActual, @@SERVERNAME AS servidorActual',
+    );
+    if (resultado?.baseActual !== baseDeDatos) {
+      throw new Error(`La API abrió "${resultado?.baseActual || 'una base desconocida'}", pero se esperaba "${baseDeDatos}".`);
+    }
+    if (!resultado.servidorActual.toLocaleLowerCase().startsWith(servidor.toLocaleLowerCase())) {
+      throw new Error(`La API conectó al servidor "${resultado.servidorActual}", pero se esperaba "${servidor}".`);
+    }
+
+    estaConectado = true;
+    ultimoError = null;
+    return { exitoso: true, baseDeDatos, mensaje: 'Conexión verificada mediante la API corporativa.' };
+  } catch (error) {
+    estaConectado = false;
+    ultimoError = error instanceof Error ? error.message : 'Error desconocido al consultar la API corporativa.';
+    return { exitoso: false, mensaje: ultimoError };
+  }
+}
+
+export async function conectarSQLServer(): Promise<null> {
+  const resultado = await probarConexionSQLServer();
+  if (!resultado.exitoso) {
+    console.error(`❌ [API SQL] No fue posible validar la conexión: ${resultado.mensaje}`);
+  } else {
+    console.log(`✅ [API SQL] ${resultado.mensaje} (${baseDeDatos} en ${servidor}).`);
+  }
+  return null;
 }
 
 export function obtenerEstadoConexion() {
   return {
-    conectado: estaConectado && Boolean(pool?.connected),
+    conectado: estaConectado,
     servidor,
-    puerto: Number.parseInt(puerto, 10),
     baseDeDatos,
-    autenticacion,
-    cifrado,
-    confiarCertificado,
+    autenticacion: 'API corporativa',
+    cifrado: apiBaseUrl.startsWith('https://'),
+    confiarCertificado: true,
     ultimoError,
     tablasObjetivo: {
       principal: 'dbo.Movimientos',
@@ -127,33 +148,10 @@ export function obtenerEstadoConexion() {
   };
 }
 
-export async function probarConexionSQLServer(): Promise<{ exitoso: boolean; baseDeDatos?: string; mensaje: string }> {
-  const conexion = await conectarSQLServer();
-  if (!conexion) {
-    return { exitoso: false, mensaje: ultimoError || 'No fue posible conectarse a SQL Server.' };
-  }
-
-  try {
-    const resultado = await conexion.request().query<{ baseActual: string }>('SELECT DB_NAME() AS baseActual');
-    const baseActual = resultado.recordset[0]?.baseActual;
-    if (baseActual !== baseDeDatos) {
-      throw new Error(`La conexión abrió "${baseActual}", pero se esperaba "${baseDeDatos}".`);
-    }
-
-    console.log(`✅ Conexión verificada en la base de datos "${baseActual}".`);
-    return { exitoso: true, baseDeDatos: baseActual, mensaje: 'Conexión a SQL Server exitosa.' };
-  } catch (error) {
-    const mensaje = error instanceof Error ? error.message : 'Error desconocido al validar la conexión.';
-    console.error(`❌ No se pudo validar la conexión: ${mensaje}`);
-    return { exitoso: false, mensaje };
-  } finally {
-    await cerrarConexionSQLServer();
-  }
-}
-
 const archivoEjecutado = process.argv[1] ? path.resolve(process.argv[1]) : '';
 if (fileURLToPath(import.meta.url) === archivoEjecutado) {
   probarConexionSQLServer().then((resultado) => {
+    console.log(resultado.mensaje);
     process.exitCode = resultado.exitoso ? 0 : 1;
   });
 }
