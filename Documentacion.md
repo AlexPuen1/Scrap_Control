@@ -75,11 +75,11 @@ El frontend de Vite usa normalmente `http://localhost:5173`; Express usa `http:/
 | `DB_DATABASE` | Base solicitada (por defecto `SOE`). |
 | `DB_API_TIMEOUT` | Timeout de `fetch` en milisegundos (por defecto `20000`). |
 
-`backend/.env` controla `PORT` (por defecto `3001`). `VITE_API_BASE_URL` permite definir la base de las rutas Express en el frontend; sin ella se usa `/api`. No almacenar credenciales en documentación o archivos versionados.
+`backend/.env` controla `PORT` (por defecto `3001`) y `CORS_ORIGINS`, una lista separada por comas de orígenes permitidos (por defecto `http://localhost:5173,http://127.0.0.1:5173`). En despliegues, configura los orígenes reales del frontend. CORS no sustituye autenticación ni bloquea clientes que no sean navegadores. `VITE_API_BASE_URL` permite definir la base de las rutas Express en el frontend; sin ella se usa `/api`. No almacenar credenciales en documentación o archivos versionados.
 
 ## 4. Arranque y estado de salud
 
-El servidor carga `backend/.env`, instala CORS, parser JSON y logging de método/URL; registra `/api/health` y `/api/movimientos`; y escucha en `PORT`. Después invoca `connectToDatabase()`, que llama a la API corporativa mediante:
+El servidor carga `backend/.env`, instala CORS limitado a `CORS_ORIGINS`, parser JSON y logging de método/URL; registra `/api/health` y `/api/movimientos`; y escucha en `PORT`. Después invoca `connectToDatabase()`, que llama a la API corporativa mediante:
 
 ```sql
 SELECT DB_NAME() AS baseActual, @@SERVERNAME AS servidorActual
@@ -200,7 +200,7 @@ Ambos cambios son persistentes y no tienen autenticación/autorización en el ba
 
 ### `dbo.Movimientos`
 
-El repositorio consulta `movimiento.*`, más `LineaId` y `DescripcionRazon` derivados. El conjunto físico de columnas conocido figura en [`BaseDeDatos/Diccionario_Datos_Movimientos.md`](BaseDeDatos/Diccionario_Datos_Movimientos.md). La UI/CSV conserva campos originales incluso cuando no se muestran en la tabla.
+El repositorio consulta `movimiento.*`, más `LineaId` y `DescripcionRazon` derivados. El conjunto físico de columnas conocido figura en [`BaseDeDatos/Diccionario_Datos_Movimientos.md`](BaseDeDatos/Diccionario_Datos_Movimientos.md). La UI conserva algunos campos originales para su ficha y aprobaciones; el CSV aplica una selección separada y explícita de columnas, descrita en la sección 10.
 
 `aprobado`: `0` pendiente, `1` aprobado, `2` rechazado, `NULL` sin dictamen. `MovimientoTipoId = 1` se trata como Scrap. El nombre de tipo sale de un mapa local. Las razones descriptivas salen de `dbo.vw_Scrap_PowerBI`.
 
@@ -223,24 +223,24 @@ Rutas React bajo `MainLayout`:
 | `/movimientos/:id` | `MovimientoDetallePage` | Ficha y edición persistente de razón. Usa el movimiento presente en el contexto; no hace una solicitud de detalle por separado. |
 | `/aprobaciones` | `AprobacionesPage` | Filtros, selección, revisión, dictamen individual y múltiple. |
 | `/fallas-por-linea` | `FallasPorLineaPage` | Agregado SQL, periodo, búsqueda local, barras horizontales y tabla. |
-| `/reportes` | `ReportesPage` | Filtrado y agrupación en memoria de los movimientos del contexto. |
-| `/comparativa-mensual` | `ComparativaMensualPage` | Comparación mensual SQL para cuatro gráficas, tarjetas resumen de picos, colores diferenciados por periodo y estados explícitos de error/sin datos. |
+| `/reportes` | `ReportesPage` | Filtrado y agrupación de movimientos cargados; con ambas fechas seleccionadas, consulta al backend el rango inclusivo solicitado. |
+| `/comparativa-mensual` | `ComparativaMensualPage` | Comparación mensual SQL para cuatro gráficas, con descripción junto al ID de razón cuando está disponible, tarjetas resumen de picos, colores diferenciados por periodo y estados explícitos de error/sin datos. |
 | `/motivos` | `MotivosPage` | Catálogo local, referencia y formularios locales. |
 | `/configuracion` | `ConfiguracionPage` | Parámetros de presentación; botón de guardado solo muestra confirmación. |
 
 `ScrapContext` carga los movimientos por periodo predeterminado. Al dictaminar se recarga ese contexto; en cambio, el rango del Dashboard se guarda localmente a su pantalla hasta usar «Último mes». El Dashboard muestra conteos/cantidades por `aprobado`, pero sus KPIs no son contadores «de hoy» necesariamente: se calculan sobre el conjunto del periodo. El KPI de costos y tasas usa valores fijos/cero por falta de integración.
 
-Movimientos y reportes se filtran sobre los resultados cargados. El filtro visual de Reportes no amplía el periodo obtenido del backend: las fechas elegidas reducen el conjunto ya cargado. La exportación CSV consume el conjunto filtrado correspondiente y puede incluir credencial y los valores originales de la fila. El botón «Registrar incidencia» está deshabilitado. La impresión llama a `window.print()` y no genera un PDF desde backend.
+Movimientos y reportes se filtran sobre los resultados cargados. En Reportes, seleccionar ambas fechas hace una nueva consulta a backend para ese intervalo (fecha final inclusiva); si solo se selecciona una fecha o el intervalo es inválido, no se muestran resultados parciales. La exportación CSV aplica protección frente a fórmulas de hojas de cálculo y omite credenciales, identificadores/nombres de empleado y datos de aprobación; conserva los campos operativos del reporte. El botón «Registrar incidencia» está deshabilitado. La impresión llama a `window.print()` y no genera un PDF desde backend.
 
 Motivos/notificaciones se inicializan de datos de `frontend/src/mock/data.ts` y se persisten en claves `localStorage` `scrap_mes_motivos_ssms_v2` y `scrap_mes_notificaciones_ssms_v2`. El reinicio borra solo esos datos locales, no los movimientos SQL. Tema y varios estados pertenecen a la interfaz.
 
 ## 11. Errores, límites y despliegue
 
 - `GET /api/health` es una instantánea del último estado, no un chequeo por petición. Una respuesta `online` no asegura que la próxima consulta corporativa funcione.
-- La lista de movimientos no tiene paginación de servidor. El volumen del periodo se descarga a Node y se envía al frontend; filtros adicionales se aplican en memoria del backend o frontend.
+- La lista de movimientos no tiene paginación de servidor. El volumen del periodo se descarga a Node y se envía al frontend; filtros de certificación/razón siguen aplicándose en memoria. En Reportes, al elegir ambas fechas se vuelve a consultar ese intervalo en el servidor (fin inclusivo); evita rangos innecesariamente amplios.
 - La API corporativa es un ejecutor SQL genérico. El backend controla sus propias llamadas, pero los permisos efectivos deben restringirse en el servicio corporativo.
-- Express permite CORS `*` y no autentica usuarios. La UI no es una frontera de autorización.
-- Antes de publicar: configurar identidad, roles y auditoría; restringir CORS/orígenes; revisar redes y TLS; asegurar permisos mínimos de la API; y limitar volumen con paginación/filtrado SQL si hace falta.
+- Express limita CORS por origen, pero todavía no autentica usuarios ni autoriza roles. Las rutas de lectura y escritura siguen accesibles a cualquier cliente que alcance el servidor; la UI no es una frontera de autorización.
+- No publicar hasta integrar autenticación/autorización y auditoría del lado del servidor; configurar los orígenes CORS reales; revisar redes y TLS; asegurar permisos mínimos de la API; y limitar volumen con paginación/filtrado SQL si hace falta.
 - No poner secretos en `.md`, repositorio ni logs. Mantener HTTPS y certificados confiables.
 
 Para detalles de conexión y campos, consultar [Conexión a datos](BaseDeDatos/ConexionBaseDatos.md) y [Diccionario de datos](BaseDeDatos/Diccionario_Datos_Movimientos.md).
@@ -250,3 +250,23 @@ Para detalles de conexión y campos, consultar [Conexión a datos](BaseDeDatos/C
 El 28 de octubre de 2026 se ejecutaron compilación backend/frontend, `npm test`, lint y pruebas HTTP contra el backend local configurado para usar la API SQL corporativa. La prueba independiente de conexión validó la base `SOE` y el prefijo de servidor `est04db`. Lecturas: `GET /api/health` respondió 200 y conectado; `/api/movimientos` respondió 200 con 2,894 filas; `/fallas-por-linea`, 200 con 4 grupos; `/razones?movimientoTipoId=1`, 200 con 57 opciones; la comparación de mayo de 2026, 200 con 805 filas agregadas; octubre respondió 200 sin agregados; y un detalle elegido de la lista respondió 200. Un intervalo válido sin filas regresó 200 y cero registros.
 
 Se comprobó `npm test` (prueba de validación de IDs), además de casos HTTP inválidos de fechas, mes, ID y cuerpos de dictamen/razón; se rechazaron con 400 antes de escribir. La prueba detectó que `GET /api/movimientos/:id` aceptaba prefijos numéricos seguidos de texto por el uso de `parseInt`; se cambió a validación de ID positivo completo y seguro, y después se confirmó que un ID malformado y cero responden 400. No se probó una escritura válida ni dictamen individual/múltiple contra la base real. La interfaz compila, pero esos cambios persistentes requieren una base de pruebas aislada para validar el ciclo completo sin alterar movimientos corporativos. No hay navegador/framework E2E instalado: no se automatizaron interacciones visuales, CSV ni impresión. El lint completo terminó con advertencias en los contextos preexistentes `ScrapContext.tsx` y `ThemeContext.tsx`, no en las páginas modificadas.
+
+## 13. Correcciones de revisión de código (28 de octubre de 2026)
+
+Esta ronda de cambios de código se verificó localmente con compilación backend/frontend, `npm test`, lint frontend y `git diff --check`. No se ejecutaron escrituras ni consultas de validación contra la base corporativa para probar las correcciones nuevas.
+
+| Área | Corrección aplicada |
+|---|---|
+| CORS | Se eliminó `origin: '*'`. El backend admite la lista separada por comas `CORS_ORIGINS`; el valor predeterminado permite los orígenes locales de Vite (`localhost:5173` y `127.0.0.1:5173`). En despliegues deben establecerse los orígenes reales. |
+| CSV | Se prefijan los valores que pudieran interpretarse como fórmulas, incluso con espacios o caracteres de control al inicio. Se excluyeron del archivo `credencial`, `EmpleadoId`, `Empleado`, `nvAprobadoPor` y `dtAprobado`; el resto de columnas exportadas está enumerado explícitamente. |
+| Detalle por ID | Si el movimiento no está en la lista cargada, la ficha solicita `GET /api/movimientos/:id` cuando la ruta contiene un ID numérico. Los identificadores que no son numéricos (por ejemplo, un serial fuera de la lista) no se resuelven desde SQL. |
+| Reportes | Con fecha inicial y final se consulta de nuevo el rango en el backend. La fecha final elegida se convierte al límite exclusivo del día siguiente; fechas incompletas o en orden incorrecto no presentan resultados parciales y muestran un aviso. |
+| Comparativa de razones | La agregación mensual incorpora la descripción disponible del catálogo además del `RazonId`; las razones sin descripción conservan su ID y los registros sin razón se etiquetan explícitamente. |
+| Estado de conexión | Una respuesta no JSON de la API SQL ahora marca la conexión como fallida y registra el mensaje en `ultimoError`. |
+| Textos de interfaz | Se quitaron el nombre/correo/rol de aprobador ficticios, las afirmaciones no integradas sobre desvío a retrabajo y firma/SAP, y la promesa de alerta automática en Configuración. El perfil ahora declara que la sesión no está autenticada. |
+
+**Pendiente crítico:** no se integró autenticación ni autorización. La persona responsable y el rol «Aprobador» mencionados en la interfaz no verifican identidad ni permisos. El usuario indicó que aún no dispone de un proveedor identificado; la integración queda pendiente hasta elegir uno. Limitar CORS mejora el control de acceso desde navegadores, pero no impide solicitudes de otros clientes ni protege por sí solo las rutas. Mantener el API en una red controlada y no exponerlo públicamente mientras no tenga autorización real del lado servidor.
+
+**Pendiente de capacidad:** los movimientos siguen sin paginación del lado servidor; la consulta inicial y los intervalos amplios pueden traer muchas filas. La búsqueda y ciertos filtros siguen aplicándose en memoria.
+
+**Resultado de validación de esta ronda:** builds backend y frontend exitosos; `npm test` pasó (1 prueba); lint frontend terminó sin errores y con las advertencias preexistentes en `ThemeContext.tsx` y `ScrapContext.tsx`; `git diff --check` pasó. No se creó commit. La carpeta local `Presentacion/` ya existía como no rastreada y no se modificó.

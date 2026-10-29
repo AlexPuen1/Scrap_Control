@@ -148,7 +148,7 @@ export const ConfiguracionPage: React.FC = () => {
                   Tolerancia Máxima Admisible de Scrap General
                 </span>
                 <span className="text-slate-500 text-[11px]">
-                  Si el scrap acumulado del día supera este porcentaje, se detona alerta crítica.
+                  Este valor es local y no genera alertas automáticas.
                 </span>
               </div>
               <div className="flex items-center gap-2">

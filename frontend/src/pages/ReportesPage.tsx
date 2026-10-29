@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   FileSpreadsheet,
   Printer,
@@ -8,6 +8,7 @@ import { useScrap } from '../context/ScrapContext';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { formatearNumero, descargarCSV, simularImpresionPDF } from '../utils/formatters';
+import { ScrapService } from '../services/scrapService';
 import {
   ResponsiveContainer,
   BarChart,
@@ -25,10 +26,52 @@ export const ReportesPage: React.FC = () => {
   const [fechaFin, setFechaFin] = useState('');
   const [filtroCertificacion, setFiltroCertificacion] = useState('');
   const [filtroRazon, setFiltroRazon] = useState('');
+  const [respuestaRango, setRespuestaRango] = useState<{
+    clave: string;
+    movimientos?: typeof movimientos;
+    error?: string;
+  } | null>(null);
+
+  const claveRango = `${fechaInicio}|${fechaFin}`;
+  const rangoCompleto = Boolean(fechaInicio && fechaFin);
+  const rangoValido = rangoCompleto && fechaInicio <= fechaFin;
+
+  useEffect(() => {
+    if (!rangoValido) return;
+    let vigente = true;
+    const [anio, mes, dia] = fechaFin.split('-').map(Number);
+    const finExclusivo = new Date(Date.UTC(anio, mes - 1, dia + 1)).toISOString().slice(0, 10);
+    ScrapService.obtenerMovimientos(fechaInicio, finExclusivo)
+      .then((datos) => {
+        if (vigente) setRespuestaRango({ clave: claveRango, movimientos: datos });
+      })
+      .catch((error: unknown) => {
+        if (vigente) {
+          setRespuestaRango({
+            clave: claveRango,
+            error: error instanceof Error ? error.message : 'No se pudo consultar el rango seleccionado.',
+          });
+        }
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [fechaInicio, fechaFin, claveRango, rangoValido]);
+
+  const movimientosDelRango = respuestaRango?.clave === claveRango
+    ? respuestaRango.movimientos
+    : undefined;
+  const cargandoRango = rangoValido && respuestaRango?.clave !== claveRango;
+  const errorRango = respuestaRango?.clave === claveRango ? respuestaRango.error : null;
+  const movimientosReporte = useMemo(() => {
+    if (rangoCompleto) return movimientosDelRango ?? [];
+    if (!fechaInicio && !fechaFin) return movimientos;
+    return [];
+  }, [rangoCompleto, movimientosDelRango, fechaInicio, fechaFin, movimientos]);
 
   // Filtrado de movimientos para el reporte
   const datosReporte = useMemo(() => {
-    return movimientos.filter((m) => {
+    return movimientosReporte.filter((m) => {
       const dentroDeFecha =
         (!fechaInicio || m.fecha >= fechaInicio) &&
         (!fechaFin || m.fecha <= fechaFin);
@@ -37,7 +80,7 @@ export const ReportesPage: React.FC = () => {
 
       return dentroDeFecha && coincideCertificacion && coincideRazon;
     });
-  }, [movimientos, fechaInicio, fechaFin, filtroCertificacion, filtroRazon]);
+  }, [movimientosReporte, fechaInicio, fechaFin, filtroCertificacion, filtroRazon]);
 
   // Resumen de Métricas del Reporte
   const totalPiezas = datosReporte.reduce((sum, m) => sum + m.cantidad, 0);
@@ -150,6 +193,19 @@ export const ReportesPage: React.FC = () => {
           </button>
         </div>
 
+        {cargandoRango && <p className="text-xs text-slate-500">Consultando el rango completo en el servidor…</p>}
+        {errorRango && <p role="alert" className="text-xs text-rose-600 dark:text-rose-400">{errorRango}</p>}
+        {Boolean(fechaInicio) !== Boolean(fechaFin) && (
+          <p role="alert" className="text-xs text-amber-700 dark:text-amber-300">
+            Selecciona ambas fechas para consultar un rango; no se mostrarán resultados parciales.
+          </p>
+        )}
+        {fechaInicio && fechaFin && fechaInicio > fechaFin && (
+          <p role="alert" className="text-xs text-amber-700 dark:text-amber-300">
+            La fecha inicial debe ser anterior o igual a la fecha final.
+          </p>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           {/* Fecha Inicio */}
           <div>
@@ -188,7 +244,7 @@ export const ReportesPage: React.FC = () => {
               className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500"
             >
               <option value="">Todas</option>
-              {[...new Set(movimientos.map((movimiento) => movimiento.certificacionId))].map((id) => (
+              {[...new Set(movimientosReporte.map((movimiento) => movimiento.certificacionId))].map((id) => (
                 <option key={id} value={String(id)}>Certificación {id}</option>
               ))}
             </select>
@@ -205,7 +261,7 @@ export const ReportesPage: React.FC = () => {
               className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500"
             >
               <option value="">Todas</option>
-              {[...new Set(movimientos.map((movimiento) => movimiento.razonId).filter((id): id is number => id !== null))].map((id) => (
+              {[...new Set(movimientosReporte.map((movimiento) => movimiento.razonId).filter((id): id is number => id !== null))].map((id) => (
                 <option key={id} value={String(id)}>{id}</option>
               ))}
             </select>

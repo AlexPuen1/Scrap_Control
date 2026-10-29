@@ -40,7 +40,7 @@ La aplicación obtiene información mediante un servicio corporativo. Algunas pa
 | **Aprobaciones** | Revisar movimientos pendientes, aplicar filtros y registrar un dictamen. También permite procesar una selección de pendientes. |
 | **Fallas por línea** | Consultar un resumen de cantidad y número de movimientos de Scrap por línea para un periodo reciente calculado por el sistema. |
 | **Comparación mensual** | Comparar el mes elegido con el mes calendario anterior en tendencias y desgloses por certificación, razón y línea. |
-| **Reportes** | Filtrar y agrupar los movimientos que ya están cargados para preparar una revisión y exportarlos. |
+| **Reportes** | Filtrar los movimientos cargados; si se eligen ambas fechas, consultar el intervalo completo al servidor y exportar el resultado. |
 | **Motivos y configuración** | Consultar referencias y opciones visuales de la aplicación. Estos datos y ajustes son locales; no actualizan catálogos corporativos. |
 
 ## ¿Qué significa cada estado del dictamen?
@@ -68,7 +68,7 @@ La aplicación permite registrar aprobación o rechazo en movimientos pendientes
 
 En esta versión no están conectados como operaciones corporativas los costos oficiales, OEE, historial completo, integración con SAP, creación de movimientos ni varios datos de personal o materiales. Algunos catálogos, notificaciones y ajustes son de demostración o se guardan localmente. **No utilice esos elementos como fuente oficial para decisiones financieras, de desempeño individual o de recursos humanos.**
 
-Los archivos CSV pueden incluir campos de la base que no se ven como columnas en la tabla, incluida la credencial. Comparta las exportaciones solo con personas autorizadas y siguiendo las políticas de manejo de información de la organización.
+La exportación CSV omite credenciales y datos identificables de empleados/aprobadores, y protege valores que podrían interpretarse como fórmulas en una hoja de cálculo. Aun así, comparta los archivos solo con personas autorizadas y siguiendo las políticas de información de la organización.
 
 ## ¿Quién puede usar esta información?
 
@@ -80,7 +80,11 @@ Las gráficas describen los registros que la aplicación consultó. Una variaci�
 
 ## Acceso y soporte técnico
 
-SCRAPControl está pensado para uso interno. Para que funcione, el equipo donde se ejecuta necesita acceso de red al servicio corporativo. La aplicación local no inicia sesión por sí sola ni comprueba permisos de gerente. En su estado actual, el backend tampoco autentica usuarios; por ello debe mantenerse en una red controlada y no exponerse públicamente sin que el área responsable implemente controles de acceso.
+SCRAPControl está pensado para uso interno. Para que funcione, el equipo donde se ejecuta necesita acceso de red al servicio corporativo. La aplicación no inicia sesión por sí sola ni comprueba permisos de gerente. El backend limita los orígenes web mediante `CORS_ORIGINS`, pero todavía no autentica usuarios ni autoriza roles; CORS no sustituye esos controles. Mantenga el servicio en una red controlada y no lo exponga públicamente hasta implementar autenticación y autorización del lado servidor.
+
+## Cambios recientes
+
+El 28 de octubre de 2026 se corrigieron la protección y minimización de datos en CSV, la carga de fichas de movimientos fuera del periodo inicial, la consulta del rango de Reportes, la descripción de razones en la comparativa mensual, y textos que daban a entender una identidad o integraciones inexistentes. También se restringió CORS a orígenes configurados y se corrigió el estado de conexión ante respuestas SQL no JSON. La documentación técnica registra el detalle de los cambios y las verificaciones realizadas.
 
 La guía de instalación, configuración, endpoints, modelo de datos y comportamiento técnico está disponible en:
 

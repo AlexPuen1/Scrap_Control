@@ -17,7 +17,13 @@ import type { OpcionRazon } from '../types';
 export const MovimientoDetallePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { movimientos, actualizarRazonMovimiento } = useScrap();
+  const { movimientos, movimientosCargando, actualizarRazonMovimiento } = useScrap();
+  const movimientoEnLista = movimientos.find((m) => m.id === id || m.serial === id);
+  const [movimientoConsultado, setMovimientoConsultado] = useState<{
+    id: string;
+    movimiento: Awaited<ReturnType<typeof ScrapService.obtenerMovimiento>>;
+  } | null>(null);
+  const [errorDetalle, setErrorDetalle] = useState<{ id: string; mensaje: string } | null>(null);
   const [catalogoRazones, setCatalogoRazones] = useState<{
     movimientoTipoId: number;
     opciones: OpcionRazon[];
@@ -27,9 +33,33 @@ export const MovimientoDetallePage: React.FC = () => {
   const [guardandoRazon, setGuardandoRazon] = useState(false);
   const [errorGuardarRazon, setErrorGuardarRazon] = useState<string | null>(null);
 
-  const movimiento = movimientos.find((m) => m.id === id || m.serial === id);
+  const movimientoConsultadoActual = movimientoConsultado && movimientoConsultado.id === id
+    ? movimientoConsultado.movimiento
+    : undefined;
+  const movimiento = movimientoEnLista ?? movimientoConsultadoActual;
   const movimientoTipoId = movimiento?.movimientoTipoId;
   const movimientoId = movimiento?.id;
+
+  useEffect(() => {
+    if (!id || movimientoEnLista || movimientosCargando) return;
+    let vigente = true;
+    if (!/^[1-9]\d*$/.test(id)) return;
+    ScrapService.obtenerMovimiento(id)
+      .then((resultado) => {
+        if (vigente) setMovimientoConsultado({ id, movimiento: resultado });
+      })
+      .catch((error: unknown) => {
+        if (vigente) {
+          setErrorDetalle({
+            id,
+            mensaje: error instanceof Error ? error.message : 'No se pudo cargar el movimiento.',
+          });
+        }
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [id, movimientoEnLista, movimientosCargando]);
 
   useEffect(() => {
     if (movimientoTipoId === undefined) return;
@@ -79,6 +109,14 @@ export const MovimientoDetallePage: React.FC = () => {
       ? movimiento.razonId !== null
       : Number(razonSeleccionada) !== movimiento.razonId),
   );
+  const detalleNoNumerico = Boolean(id && !/^[1-9]\d*$/.test(id));
+  const errorDetalleActual = errorDetalle && errorDetalle.id === id ? errorDetalle.mensaje : null;
+  const mensajeErrorDetalle = errorDetalleActual
+    ? errorDetalleActual
+    : detalleNoNumerico
+      ? 'No se encontró el movimiento en el periodo cargado. Para consultar por folio, usa el ID numérico.'
+      : null;
+  const cargandoDetalle = !movimiento && !movimientosCargando && !detalleNoNumerico && !mensajeErrorDetalle;
   const guardarRazon = async () => {
     if (!movimiento || razonSeleccionada === '__actual__') return;
     setGuardandoRazon(true);
@@ -100,10 +138,12 @@ export const MovimientoDetallePage: React.FC = () => {
     return (
       <div className="p-12 text-center space-y-4">
         <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">
-          Movimiento no encontrado
+          {cargandoDetalle || movimientosCargando ? 'Cargando movimiento…' : 'No se pudo mostrar el movimiento'}
         </h2>
         <p className="text-sm text-slate-500">
-          El folio #{id} no existe o no se encuentra registrado en dbo.Movimientos.
+          {mensajeErrorDetalle || (movimientosCargando
+            ? 'Consultando los registros disponibles.'
+            : `No se encontró el folio #${id} en dbo.Movimientos.`)}
         </p>
         <Button variant="primary" onClick={() => navigate('/movimientos')}>
           Volver a Movimientos
@@ -173,13 +213,13 @@ export const MovimientoDetallePage: React.FC = () => {
             </h4>
             <p className="text-xs opacity-90">
               {movimiento.aprobado === 1 &&
-                `Dictaminado por ${movimiento.nvAprobadoPor || 'Supervisor de Calidad'} el ${movimiento.dtAprobado || movimiento.fechaHora}.`}
+                `Dictaminado por ${movimiento.nvAprobadoPor || 'Responsable no especificado'} el ${movimiento.dtAprobado || movimiento.fechaHora}.`}
               {movimiento.aprobado === 2 &&
-                `Rechazado por ${movimiento.nvAprobadoPor || 'Supervisor de Calidad'}. Desviado a bahía de retrabajo.`}
+                `Rechazado por ${movimiento.nvAprobadoPor || 'Responsable no especificado'}.`}
               {movimiento.aprobado === null &&
                 'La integración del campo de aprobación está pendiente.'}
               {movimiento.aprobado === 0 &&
-                'En espera de firma digital del supervisor de calidad para contabilización en SAP S/4HANA.'}
+                'Pendiente de dictamen. Esta aplicación no ejecuta firma digital ni registra movimientos en SAP.'}
             </p>
           </div>
         </div>

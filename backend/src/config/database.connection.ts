@@ -40,7 +40,9 @@ async function ejecutarComandoSQL<T>(command: string): Promise<ResultadoSQL<T>> 
   try {
     resultado = JSON.parse(contenido) as ResultadoSQL<T>;
   } catch {
-    throw new Error(`La API SQL respondió con un formato no JSON (HTTP ${response.status}).`);
+    estaConectado = false;
+    ultimoError = `La API SQL respondió con un formato no JSON (HTTP ${response.status}).`;
+    throw new Error(ultimoError);
   }
 
   if (!response.ok || resultado.success !== true) {

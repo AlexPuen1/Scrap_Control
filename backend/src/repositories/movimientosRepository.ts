@@ -110,7 +110,7 @@ export class MovimientosRepository {
     inicioActual: string,
     finActual: string,
   ): Promise<ComparativaMensualReporte> {
-    const consulta = (grafica: string, agrupacion: string, filtroScrap = '') => `
+    const consulta = (grafica: string, agrupacion: string, filtroScrap = '', joinAdicional = '') => `
       SELECT
         '${grafica}' AS grafica,
         CASE WHEN movimiento.fecha_hora >= '${inicioActual}' THEN 'actual' ELSE 'anterior' END AS periodo,
@@ -120,6 +120,7 @@ export class MovimientosRepository {
       FROM dbo.Movimientos AS movimiento
       LEFT JOIN dbo.Certificacion AS certificacion
         ON certificacion.id = movimiento.CertificacionId
+      ${joinAdicional}
       WHERE movimiento.fecha_hora >= '${inicioAnterior}'
         AND movimiento.fecha_hora < '${finActual}'
         ${filtroScrap}
@@ -135,7 +136,25 @@ export class MovimientosRepository {
         UNION ALL
         ${consulta('certificacion', 'CONVERT(varchar(32), movimiento.CertificacionId)')}
         UNION ALL
-        ${consulta('razon', "COALESCE(CONVERT(varchar(32), movimiento.RazonId), 'Sin razon')", 'AND movimiento.MovimientoTipoId = 1')}
+        ${consulta(
+          'razon',
+          `CASE
+            WHEN movimiento.RazonId IS NULL THEN 'Sin razon'
+            ELSE CONCAT(
+              'ID ', CONVERT(varchar(32), movimiento.RazonId),
+              COALESCE(CONCAT(' - ', catalogoRazon.descripcion), '')
+            )
+          END`,
+          'AND movimiento.MovimientoTipoId = 1',
+          `LEFT JOIN (
+            SELECT MovimientoTipoId, RAZONid, MAX(NULLIF(LTRIM(RTRIM(desc_Razon)), '')) AS descripcion
+            FROM dbo.vw_Scrap_PowerBI
+            WHERE desc_Razon IS NOT NULL
+            GROUP BY MovimientoTipoId, RAZONid
+          ) AS catalogoRazon
+            ON catalogoRazon.MovimientoTipoId = movimiento.MovimientoTipoId
+            AND catalogoRazon.RAZONid = movimiento.RazonId`,
+        )}
         UNION ALL
         ${consulta('linea', "COALESCE(CONVERT(varchar(32), certificacion.LineaId), 'Sin linea asignada')", 'AND movimiento.MovimientoTipoId = 1')}
       ) AS comparativa

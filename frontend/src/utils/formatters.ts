@@ -33,38 +33,49 @@ export const descargarCSV = (datos: Movimiento[], nombreArchivo = 'reporte-scrap
     'CertificacionId',
     'MATNR',
     'fecha_hora',
-    'credencial',
     'MovimientoTipoId',
     'cantidad',
     'salida',
     'retorno',
-    'EmpleadoId',
-    'Empleado',
     'procesado',
     'aprobado',
     'RazonId',
+    'DescripcionRazon',
     'centro_costo',
     'almacen',
     'serial',
     'MATNR_FG',
-    'nvAprobadoPor',
-    'dtAprobado',
   ];
 
   const escaparCSV = (valor: unknown) => {
     const texto = valor === null || valor === undefined ? '' : String(valor);
-    return `"${texto.replace(/"/g, '""')}"`;
+    let primerCaracter = 0;
+    while (primerCaracter < texto.length) {
+      const codigo = texto.charCodeAt(primerCaracter);
+      if (codigo <= 0x20 || codigo === 0xfeff || texto[primerCaracter].trim() === '') {
+        primerCaracter += 1;
+      } else {
+        break;
+      }
+    }
+    const inicial = texto[primerCaracter];
+    const protegido = ['=', '+', '-', '@'].includes(inicial ?? '') ? `'${texto}` : texto;
+    return `"${protegido.replace(/"/g, '""')}"`;
   };
   const filas = datos.map((m) => {
     const row = m.datosDB;
     return row
       ? [
-          row.id, row.CertificacionId, row.MATNR, row.fecha_hora, row.credencial,
-          row.MovimientoTipoId, row.cantidad, row.salida, row.retorno, row.EmpleadoId,
-          row.Empleado, row.procesado, row.aprobado, row.RazonId, row.centro_costo,
-          row.almacen, row.serial, row.MATNR_FG, row.nvAprobadoPor, row.dtAprobado,
+          row.id, row.CertificacionId, row.MATNR, row.fecha_hora,
+          row.MovimientoTipoId, row.cantidad, row.salida, row.retorno,
+          row.procesado, row.aprobado, row.RazonId, row.DescripcionRazon,
+          row.centro_costo, row.almacen, row.serial, row.MATNR_FG,
         ].map(escaparCSV)
-      : [m.id, m.certificacionId, m.matnr, m.fechaHora, m.credencial, m.movimientoTipoId, m.cantidad]
+      : [
+          m.id, m.certificacionId, m.matnr, m.fechaHora, m.movimientoTipoId, m.cantidad,
+          m.salida, m.retorno, m.procesado, m.aprobado, m.razonId, m.descripcionRazon,
+          m.centroCosto, m.almacen, m.serial, m.matnrFg,
+        ]
           .map(escaparCSV);
   });
 

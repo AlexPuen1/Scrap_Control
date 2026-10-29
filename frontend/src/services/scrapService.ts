@@ -65,6 +65,15 @@ async function solicitarMovimientos(fechaInicio?: string, fechaFin?: string): Pr
   return body.datos.map(adaptarMovimiento);
 }
 
+async function solicitarMovimiento(id: string): Promise<Movimiento> {
+  const response = await fetch(`${API_BASE}/movimientos/${encodeURIComponent(id)}`);
+  const body = await response.json() as { exitoso: boolean; datos?: MovimientoDB; mensaje?: string };
+  if (!response.ok || !body.exitoso || !body.datos) {
+    throw new Error(body.mensaje || `No se pudo cargar el movimiento (HTTP ${response.status}).`);
+  }
+  return adaptarMovimiento(body.datos);
+}
+
 async function enviarDictamen(id: string, aprobado: 1 | 2, aprobadoPor: string): Promise<void> {
   const response = await fetch(`${API_BASE}/movimientos/${encodeURIComponent(id)}/dictamen`, {
     method: 'PATCH',
@@ -132,6 +141,7 @@ async function enviarActualizacionRazon(id: string, razonId: number | null): Pro
 /** El frontend consume el backend; la llamada a la API corporativa queda solo en servidor. */
 export const ScrapService = {
   obtenerMovimientos: (fechaInicio?: string, fechaFin?: string) => solicitarMovimientos(fechaInicio, fechaFin),
+  obtenerMovimiento: (id: string) => solicitarMovimiento(id),
 
   obtenerScrapPorLinea: () => solicitarScrapPorLinea(),
   obtenerComparativaMensual: (mes: string) => solicitarComparativaMensual(mes),
