@@ -80,7 +80,7 @@ Las gráficas describen los registros que la aplicación consultó. Una variaci�
 
 ## Acceso y soporte técnico
 
-SCRAPControl está pensado para uso interno. Para que funcione, el equipo donde se ejecuta necesita acceso de red al servicio corporativo. La aplicación no inicia sesión por sí sola ni comprueba permisos de gerente. El backend limita los orígenes web mediante `CORS_ORIGINS`, pero todavía no autentica usuarios ni autoriza roles; CORS no sustituye esos controles. Mantenga el servicio en una red controlada y no lo exponga públicamente hasta implementar autenticación y autorización del lado servidor.
+SCRAPControl está pensado para uso local: el backend escucha solo en `127.0.0.1`, mientras el equipo necesita acceso de red al servicio corporativo. La aplicación no inicia sesión por sí sola ni comprueba permisos de gerente; clientes locales todavía pueden invocar las rutas y las escrituras. El backend limita los orígenes web mediante `CORS_ORIGINS`, pero CORS no sustituye autenticación ni autorización. No exponga el backend en una red compartida o públicamente hasta implementar controles de identidad y permisos del lado servidor.
 
 ## Cambios recientes
 

@@ -75,11 +75,11 @@ El frontend de Vite usa normalmente `http://localhost:5173`; Express usa `http:/
 | `DB_DATABASE` | Base solicitada (por defecto `SOE`). |
 | `DB_API_TIMEOUT` | Timeout de `fetch` en milisegundos (por defecto `20000`). |
 
-`backend/.env` controla `PORT` (por defecto `3001`) y `CORS_ORIGINS`, una lista separada por comas de orígenes permitidos (por defecto `http://localhost:5173,http://127.0.0.1:5173`). En despliegues, configura los orígenes reales del frontend. CORS no sustituye autenticación ni bloquea clientes que no sean navegadores. `VITE_API_BASE_URL` permite definir la base de las rutas Express en el frontend; sin ella se usa `/api`. No almacenar credenciales en documentación o archivos versionados.
+`backend/.env` controla `PORT` (por defecto `3001`) y `CORS_ORIGINS`, una lista separada por comas de orígenes permitidos (por defecto `http://localhost:5173,http://127.0.0.1:5173`). Express escucha exclusivamente en `127.0.0.1`, por lo que este backend solo acepta conexiones desde el mismo equipo. CORS no sustituye autenticación ni bloquea clientes locales. `VITE_API_BASE_URL` permite definir la base de las rutas Express en el frontend; sin ella se usa `/api`. No almacenar credenciales en documentación o archivos versionados.
 
 ## 4. Arranque y estado de salud
 
-El servidor carga `backend/.env`, instala CORS limitado a `CORS_ORIGINS`, parser JSON y logging de método/URL; registra `/api/health` y `/api/movimientos`; y escucha en `PORT`. Después invoca `connectToDatabase()`, que llama a la API corporativa mediante:
+El servidor carga `backend/.env`, instala CORS limitado a `CORS_ORIGINS`, parser JSON y logging de método/URL; registra `/api/health` y `/api/movimientos`; y escucha en `127.0.0.1:PORT`, sin exponer el listener a la red local. Después invoca `connectToDatabase()`, que llama a la API corporativa mediante:
 
 ```sql
 SELECT DB_NAME() AS baseActual, @@SERVERNAME AS servidorActual

@@ -8,7 +8,11 @@ import { getHealth } from './controllers/healthController.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT ?? 3001);
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  throw new Error('PORT must be an integer between 1 and 65535');
+}
+const HOST = '127.0.0.1';
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
   .split(',')
   .map((origin) => origin.trim())
@@ -33,10 +37,10 @@ app.get('/api/health', getHealth);
 app.use('/api/movimientos', movimientosRoutes);
 
 // Iniciar servidor y conectar a base de datos
-app.listen(PORT, async () => {
-  console.log(`🚀 [Backend] Servidor ejecutándose en http://localhost:${PORT}`);
-  console.log(`📋 [API Endpoints] Disponibles en http://localhost:${PORT}/api/movimientos`);
-  console.log(`🔍 [Health Check] http://localhost:${PORT}/api/health`);
+app.listen(PORT, HOST, async () => {
+  console.log(`🚀 [Backend] Servidor ejecutándose en http://${HOST}:${PORT}`);
+  console.log(`📋 [API Endpoints] Disponibles en http://${HOST}:${PORT}/api/movimientos`);
+  console.log(`🔍 [Health Check] http://${HOST}:${PORT}/api/health`);
 
   // Verifica el acceso a SQL Server a través de la API corporativa.
   await connectToDatabase();
