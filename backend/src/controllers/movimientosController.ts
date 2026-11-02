@@ -3,6 +3,12 @@ import { MovimientosRepository } from '../repositories/movimientosRepository.js'
 
 const repo = new MovimientosRepository();
 
+function responderErrorInterno(res: Response, contexto: string, mensaje: string, error: unknown) {
+  const tipoError = error instanceof Error ? error.name : 'UnknownError';
+  console.error(`[API] ${contexto} (${tipoError})`);
+  res.status(500).json({ exitoso: false, mensaje });
+}
+
 export async function getMovimientos(req: Request, res: Response) {
   const fechaInicio = typeof req.query.fechaInicio === 'string' ? req.query.fechaInicio : undefined;
   const fechaFin = typeof req.query.fechaFin === 'string' ? req.query.fechaFin : undefined;
@@ -34,8 +40,7 @@ export async function getMovimientos(req: Request, res: Response) {
     const lista = await repo.listar(filtros);
     res.json({ exitoso: true, datos: lista, conteo: lista.length });
   } catch (error) {
-    const mensaje = error instanceof Error ? error.message : 'Error al obtener movimientos.';
-    res.status(500).json({ exitoso: false, mensaje });
+    responderErrorInterno(res, 'Error al obtener movimientos', 'Error interno al obtener movimientos.', error);
   }
 }
 
@@ -58,8 +63,7 @@ export async function getMovimientoById(req: Request, res: Response) {
     }
     res.json({ exitoso: true, datos: movimiento });
   } catch (error) {
-    const mensaje = error instanceof Error ? error.message : 'Error al obtener movimiento.';
-    res.status(500).json({ exitoso: false, mensaje });
+    responderErrorInterno(res, 'Error al obtener movimiento', 'Error interno al obtener movimiento.', error);
   }
 }
 
@@ -74,8 +78,7 @@ export async function getRazones(req: Request, res: Response) {
     const datos = await repo.obtenerRazones(movimientoTipoId);
     res.json({ exitoso: true, datos });
   } catch (error) {
-    const mensaje = error instanceof Error ? error.message : 'Error al obtener razones.';
-    res.status(500).json({ exitoso: false, mensaje });
+    responderErrorInterno(res, 'Error al obtener razones', 'Error interno al obtener razones.', error);
   }
 }
 
@@ -103,8 +106,7 @@ export async function actualizarRazon(req: Request, res: Response) {
     }
     res.json({ exitoso: true, datos: resultado.movimiento });
   } catch (error) {
-    const mensaje = error instanceof Error ? error.message : 'Error al actualizar la razón.';
-    res.status(500).json({ exitoso: false, mensaje });
+    responderErrorInterno(res, 'Error al actualizar la razón', 'Error interno al actualizar la razón.', error);
   }
 }
 
@@ -121,7 +123,7 @@ export async function registrarDictamen(req: Request, res: Response) {
 
   const aprobado = req.body?.aprobado;
   const aprobadoPor = typeof req.body?.aprobadoPor === 'string' ? req.body.aprobadoPor.trim() : '';
-  if ((aprobado !== 1 && aprobado !== 2) || aprobadoPor.length === 0 || aprobadoPor.length > 200) {
+  if ((aprobado !== 1 && aprobado !== 4) || aprobadoPor.length === 0 || aprobadoPor.length > 200) {
     res.status(400).json({
       exitoso: false,
       mensaje: 'Indica si apruebas o rechazas y captura el nombre del responsable (máximo 200 caracteres).',
@@ -141,8 +143,7 @@ export async function registrarDictamen(req: Request, res: Response) {
     }
     res.json({ exitoso: true, datos: resultado.movimiento });
   } catch (error) {
-    const mensaje = error instanceof Error ? error.message : 'Error al registrar el dictamen.';
-    res.status(500).json({ exitoso: false, mensaje });
+    responderErrorInterno(res, 'Error al registrar el dictamen', 'Error interno al registrar el dictamen.', error);
   }
 }
 
@@ -151,8 +152,7 @@ export async function getScrapPorLinea(_req: Request, res: Response) {
     const reporte = await repo.obtenerScrapPorLinea();
     res.json({ exitoso: true, ...reporte });
   } catch (error) {
-    const mensaje = error instanceof Error ? error.message : 'Error al obtener Scrap por línea.';
-    res.status(500).json({ exitoso: false, mensaje });
+    responderErrorInterno(res, 'Error al obtener Scrap por línea', 'Error interno al obtener Scrap por línea.', error);
   }
 }
 
@@ -177,7 +177,6 @@ export async function getComparativaMensual(req: Request, res: Response) {
     const reporte = await repo.obtenerComparativaMensual(inicioAnterior, inicioActual, finActual);
     res.json({ exitoso: true, ...reporte });
   } catch (error) {
-    const mensaje = error instanceof Error ? error.message : 'Error al comparar los meses.';
-    res.status(500).json({ exitoso: false, mensaje });
+    responderErrorInterno(res, 'Error al comparar los meses', 'Error interno al comparar los meses.', error);
   }
 }

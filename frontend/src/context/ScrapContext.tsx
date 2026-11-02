@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useMemo } from 'react';
 import type { Motivo, Movimiento, Notificacion, ResumenKPIs, Turno, RazonCatalogo } from '../types';
 import { MOTIVOS_INICIALES, NOTIFICACIONES_INICIALES, RAZONES_SSMS } from '../mock/data';
 import { ScrapService } from '../services/scrapService';
@@ -25,8 +25,8 @@ interface ScrapContextType {
   agregarToast: (tipo: ToastMessage['tipo'], titulo: string, mensaje: string) => void;
   removerToast: (id: string) => void;
   aprobarMovimiento: (id: string, aprobadoPor: string) => Promise<void>;
-  dictaminarMovimientos: (ids: string[], decision: 1 | 2, aprobadoPor: string) => Promise<{ dictaminados: string[]; fallidos: { id: string; mensaje: string }[] }>;
-  rechazarMovimiento: (id: string, aprobadoPor: string) => Promise<void>;
+  dictaminarMovimientos: (ids: string[], decision: 1 | 4, aprobadoPor: string, comentarioRechazo?: string) => Promise<{ dictaminados: string[]; fallidos: { id: string; mensaje: string }[] }>;
+  rechazarMovimiento: (id: string, aprobadoPor: string, comentarioRechazo?: string) => Promise<void>;
   actualizarRazonMovimiento: (id: string, razonId: number | null) => Promise<void>;
   crearMotivo: (nuevo: Omit<Motivo, 'id'>) => Motivo;
   actualizarMotivo: (id: string, actualizacion: Partial<Motivo>) => void;
@@ -48,6 +48,8 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [movimientosCargando, setMovimientosCargando] = useState(true);
   const [errorMovimientos, setErrorMovimientos] = useState<string | null>(null);
   const [recargaMovimientos, setRecargaMovimientos] = useState(0);
+  const comentariosRechazoRef = useRef<Record<string, string>>({});
+  const siguienteToastIdRef = useRef(0);
 
   const [motivos, setMotivos] = useState<Motivo[]>(() => {
     const guardado = localStorage.getItem(STORAGE_KEYS.MOTIVOS);
@@ -81,11 +83,14 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     let vigente = true;
-    setMovimientosCargando(true);
-    setErrorMovimientos(null);
     ScrapService.obtenerMovimientos()
       .then((datos) => {
-        if (vigente) setMovimientos(datos);
+        if (vigente) {
+          setMovimientos(datos.map((movimiento) => ({
+            ...movimiento,
+            comentarioRechazo: comentariosRechazoRef.current[movimiento.id],
+          })));
+        }
       })
       .catch((error: unknown) => {
         if (vigente) {
@@ -99,7 +104,11 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => { vigente = false; };
   }, [recargaMovimientos]);
 
-  const recargarMovimientos = () => setRecargaMovimientos((actual) => actual + 1);
+  const recargarMovimientos = () => {
+    setMovimientosCargando(true);
+    setErrorMovimientos(null);
+    setRecargaMovimientos((actual) => actual + 1);
+  };
 
   useEffect(() => {
     let temporizador: number;
@@ -135,7 +144,7 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [notificaciones]);
 
   const agregarToast = (tipo: ToastMessage['tipo'], titulo: string, mensaje: string) => {
-    const id = Date.now().toString() + Math.random().toString().slice(2, 6);
+    const id = `toast-${siguienteToastIdRef.current++}`;
     setToasts((prev) => [...prev, { id, tipo, titulo, mensaje }]);
     setTimeout(() => {
       removerToast(id);
@@ -152,29 +161,59 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     recargarMovimientos();
   };
 
-  const dictaminarMovimientos = async (ids: string[], decision: 1 | 2, aprobadoPor: string) => {
+  const registrarComentarioRechazoLocal = (id: string, comentario: string) => {
+    comentariosRechazoRef.current[id] = comentario;
+    setMovimientos((actuales) => actuales.map((movimiento) =>
+      movimiento.id === id ? { ...movimiento, comentarioRechazo: comentario } : movimiento,
+    ));
+  };
+
+  const dictaminarMovimientos = async (
+    ids: string[],
+    decision: 1 | 4,
+    aprobadoPor: string,
+    comentarioRechazo = '',
+  ) => {
+    const incluyeScrap = ids.some((id) =>
+      movimientos.some((movimiento) => movimiento.id === id && movimiento.movimientoTipoId === 1),
+    );
+    if (decision === 4 && incluyeScrap && !comentarioRechazo.trim()) {
+      throw new Error('El comentario es obligatorio para rechazar Scrap.');
+    }
+
     const dictaminados: string[] = [];
     const fallidos: { id: string; mensaje: string }[] = [];
 
     for (const id of ids) {
       try {
         if (decision === 1) await ScrapService.aprobarMovimiento(id, aprobadoPor);
-        else await ScrapService.rechazarMovimiento(id, aprobadoPor);
+        else {
+          await ScrapService.rechazarMovimiento(id, aprobadoPor);
+          if (
+            movimientos.some((movimiento) => movimiento.id === id && movimiento.movimientoTipoId === 1)
+            && comentarioRechazo.trim()
+          ) {
+            registrarComentarioRechazoLocal(id, comentarioRechazo.trim());
+          }
+        }
         dictaminados.push(id);
       } catch (error) {
         fallidos.push({
           id,
-          mensaje: error instanceof Error ? error.message : 'Error desconocido al aprobar.',
+          mensaje: error instanceof Error ? error.message : 'Error desconocido al registrar el dictamen.',
         });
       }
     }
 
-    const etiquetaDecision = decision === 1 ? 'aprobado(s)' : 'rechazado(s)';
     if (dictaminados.length > 0) {
       agregarToast(
         'success',
         decision === 1 ? 'Aprobación múltiple' : 'Rechazo múltiple',
-        `${dictaminados.length} movimiento(s) ${etiquetaDecision} y guardado(s) en dbo.Movimientos.`,
+        decision === 1
+          ? `${dictaminados.length} movimiento(s) aprobado(s) y guardado(s) en dbo.Movimientos.`
+          : incluyeScrap && comentarioRechazo.trim()
+            ? `${dictaminados.length} movimiento(s) rechazado(s) guardado(s) en dbo.Movimientos. El comentario solo está disponible durante esta sesión.`
+            : `${dictaminados.length} movimiento(s) rechazado(s) guardado(s) en dbo.Movimientos.`,
       );
       recargarMovimientos();
     }
@@ -188,9 +227,20 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { dictaminados, fallidos };
   };
 
-  const rechazarMovimiento = async (id: string, aprobadoPor: string) => {
+  const rechazarMovimiento = async (id: string, aprobadoPor: string, comentarioRechazo = '') => {
+    const esScrap = movimientos.some((movimiento) => movimiento.id === id && movimiento.movimientoTipoId === 1);
+    if (esScrap && !comentarioRechazo.trim()) {
+      throw new Error('El comentario es obligatorio para rechazar Scrap.');
+    }
     await ScrapService.rechazarMovimiento(id, aprobadoPor);
-    agregarToast('success', 'Movimiento rechazado', `El dictamen del movimiento ${id} se guardó en dbo.Movimientos.`);
+    if (esScrap) registrarComentarioRechazoLocal(id, comentarioRechazo.trim());
+    agregarToast(
+      'success',
+      'Movimiento rechazado',
+      esScrap
+        ? `El dictamen del movimiento ${id} se guardó en dbo.Movimientos. El comentario solo está disponible durante esta sesión.`
+        : `El dictamen del movimiento ${id} se guardó en dbo.Movimientos.`,
+    );
     recargarMovimientos();
   };
 
@@ -247,7 +297,7 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const scrapHoyCosto = 0;
     const pendientesAprobar = movimientos.filter((m) => m.aprobado === 0 || m.estatus === 'Pendiente').length;
     const aprobadosHoy = movimientos.filter((m) => m.aprobado === 1 || m.estatus === 'Aprobado').length;
-    const rechazadosHoy = movimientos.filter((m) => m.aprobado === 2 || m.estatus === 'Rechazado').length;
+    const rechazadosHoy = movimientos.filter((m) => m.aprobado === 4 || m.estatus === 'Rechazado').length;
 
     return {
       scrapHoyPzas,

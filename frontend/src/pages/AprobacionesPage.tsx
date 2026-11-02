@@ -13,7 +13,7 @@ import type { Movimiento } from '../types';
 import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
 
-type Decision = 1 | 2;
+type Decision = 1 | 4;
 type Revision = { movimiento: Movimiento; decision: Decision };
 
 const valorDato = (valor: string | number | boolean | null | undefined) => {
@@ -38,17 +38,20 @@ const CampoDato: React.FC<{ etiqueta: string; valor: string | number | boolean |
 export const AprobacionesPage: React.FC = () => {
   const { movimientos, aprobarMovimiento, dictaminarMovimientos, rechazarMovimiento } = useScrap();
   const [filtroCertificacion, setFiltroCertificacion] = useState('');
-  const [busquedaLinea, setBusquedaLinea] = useState('');
+  const [busquedaSerial, setBusquedaSerial] = useState('');
   const [busquedaFechaHora, setBusquedaFechaHora] = useState('');
   const [seleccionados, setSeleccionados] = useState<string[]>([]);
   const [modalDictamenMultiple, setModalDictamenMultiple] = useState(false);
+  const [confirmacionFinalMultiple, setConfirmacionFinalMultiple] = useState(false);
   const [decisionMultiple, setDecisionMultiple] = useState<Decision>(1);
   const [nombreResponsableMultiple, setNombreResponsableMultiple] = useState('');
+  const [comentarioRechazoMultiple, setComentarioRechazoMultiple] = useState('');
   const [errorAprobacionMultiple, setErrorAprobacionMultiple] = useState<string | null>(null);
   const [idsFallidos, setIdsFallidos] = useState<string[]>([]);
   const [aprobacionMultipleEnviando, setAprobacionMultipleEnviando] = useState(false);
   const [revision, setRevision] = useState<Revision | null>(null);
   const [nombreResponsable, setNombreResponsable] = useState('');
+  const [comentarioRechazo, setComentarioRechazo] = useState('');
   const [dictamenEnviando, setDictamenEnviando] = useState(false);
   const [errorDictamen, setErrorDictamen] = useState<string | null>(null);
 
@@ -56,21 +59,24 @@ export const AprobacionesPage: React.FC = () => {
     const esPendiente = movimiento.aprobado === 0 || movimiento.estatus === 'Pendiente';
     const coincideCertificacion = filtroCertificacion === ''
       || String(movimiento.certificacionId) === filtroCertificacion;
-    const linea = movimiento.linea.toLocaleLowerCase();
-    const coincideLinea = busquedaLinea.trim() === ''
-      || linea.includes(busquedaLinea.trim().toLocaleLowerCase())
-      || String(movimiento.datosDB?.LineaId ?? '').includes(busquedaLinea.trim());
+    const serial = movimiento.serial.toLocaleLowerCase();
+    const coincideSerial = busquedaSerial.trim() === ''
+      || serial.includes(busquedaSerial.trim().toLocaleLowerCase());
     const fechaHora = (movimiento.fechaHora || `${movimiento.fecha} ${movimiento.hora}`)
       .replace('T', ' ')
       .toLocaleLowerCase();
     const coincideFechaHora = busquedaFechaHora.trim() === ''
       || fechaHora.includes(busquedaFechaHora.trim().replace('T', ' ').toLocaleLowerCase());
-    return esPendiente && coincideCertificacion && coincideLinea && coincideFechaHora;
+    return esPendiente && coincideCertificacion && coincideSerial && coincideFechaHora;
   });
   const idsPendientesVisibles = pendientes.map((movimiento) => movimiento.id);
   const seleccionadosVisibles = seleccionados.filter((id) => idsPendientesVisibles.includes(id));
   const todosVisiblesSeleccionados = idsPendientesVisibles.length > 0
     && idsPendientesVisibles.every((id) => seleccionados.includes(id));
+  const rechazoMultipleIncluyeScrap = seleccionadosVisibles.some((id) =>
+    movimientos.some((movimiento) => movimiento.id === id && movimiento.movimientoTipoId === 1),
+  );
+  const requiereComentarioRechazo = revision?.decision === 4 && revision.movimiento.movimientoTipoId === 1;
 
   const alternarSeleccionTodos = (seleccionar: boolean) => {
     setSeleccionados((actuales) => {
@@ -85,25 +91,40 @@ export const AprobacionesPage: React.FC = () => {
       : actuales.filter((seleccionado) => seleccionado !== id));
   };
 
-  const confirmarAprobacionMultiple = async (event: React.FormEvent<HTMLFormElement>) => {
+  const prepararAprobacionMultiple = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const responsable = nombreResponsableMultiple.trim();
     if (!responsable) {
       setErrorAprobacionMultiple('Captura el nombre del responsable para continuar.');
       return;
     }
+    if (decisionMultiple === 4 && rechazoMultipleIncluyeScrap && !comentarioRechazoMultiple.trim()) {
+      setErrorAprobacionMultiple('Captura un comentario para rechazar Scrap.');
+      return;
+    }
 
+    setConfirmacionFinalMultiple(true);
+  };
+
+  const confirmarAprobacionMultiple = async () => {
     setAprobacionMultipleEnviando(true);
     setErrorAprobacionMultiple(null);
     setIdsFallidos([]);
     try {
-      const resultado = await dictaminarMovimientos(seleccionadosVisibles, decisionMultiple, responsable);
+      const resultado = await dictaminarMovimientos(
+        seleccionadosVisibles,
+        decisionMultiple,
+        nombreResponsableMultiple.trim(),
+        comentarioRechazoMultiple,
+      );
       setIdsFallidos(resultado.fallidos.map(({ id }) => id));
       setSeleccionados(resultado.fallidos.map(({ id }) => id));
       if (resultado.fallidos.length === 0) setModalDictamenMultiple(false);
       else setErrorAprobacionMultiple(`${resultado.dictaminados.length} ${decisionMultiple === 1 ? 'aprobado(s)' : 'rechazado(s)'}; ${resultado.fallidos.length} no se pudieron procesar. Los fallidos siguen seleccionados.`);
+      setConfirmacionFinalMultiple(false);
     } catch (error) {
       setErrorAprobacionMultiple(error instanceof Error ? error.message : 'No se pudo completar la aprobación múltiple.');
+      setConfirmacionFinalMultiple(false);
     } finally {
       setAprobacionMultipleEnviando(false);
     }
@@ -112,6 +133,7 @@ export const AprobacionesPage: React.FC = () => {
   const abrirRevision = (movimiento: Movimiento, decision: Decision) => {
     setRevision({ movimiento, decision });
     setNombreResponsable('');
+    setComentarioRechazo('');
     setErrorDictamen(null);
   };
 
@@ -130,6 +152,10 @@ export const AprobacionesPage: React.FC = () => {
       setErrorDictamen('Captura el nombre del responsable para continuar.');
       return;
     }
+    if (requiereComentarioRechazo && !comentarioRechazo.trim()) {
+      setErrorDictamen('Captura un comentario para rechazar Scrap.');
+      return;
+    }
 
     setDictamenEnviando(true);
     setErrorDictamen(null);
@@ -137,7 +163,7 @@ export const AprobacionesPage: React.FC = () => {
       if (revision.decision === 1) {
         await aprobarMovimiento(revision.movimiento.id, responsable);
       } else {
-        await rechazarMovimiento(revision.movimiento.id, responsable);
+        await rechazarMovimiento(revision.movimiento.id, responsable, comentarioRechazo);
       }
       setRevision(null);
     } catch (error) {
@@ -196,13 +222,13 @@ export const AprobacionesPage: React.FC = () => {
         </div>
         <div className="flex min-w-[200px] flex-1 items-center gap-2 text-xs sm:max-w-xs">
           <Search className="h-4 w-4 shrink-0 text-slate-400" />
-          <label htmlFor="busqueda-linea" className="sr-only">Buscar por línea</label>
+          <label htmlFor="busqueda-serial-aprobaciones" className="sr-only">Buscar por serial</label>
           <input
-            id="busqueda-linea"
+            id="busqueda-serial-aprobaciones"
             type="search"
-            value={busquedaLinea}
-            onChange={(event) => setBusquedaLinea(event.target.value)}
-            placeholder="Buscar por línea"
+            value={busquedaSerial}
+            onChange={(event) => setBusquedaSerial(event.target.value)}
+            placeholder="Buscar por serial"
             className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
           />
         </div>
@@ -257,8 +283,9 @@ export const AprobacionesPage: React.FC = () => {
               icon={<X className="h-3.5 w-3.5" />}
               disabled={seleccionadosVisibles.length === 0 || aprobacionMultipleEnviando}
               onClick={() => {
-                setDecisionMultiple(2);
+                setDecisionMultiple(4);
                 setNombreResponsableMultiple('');
+                setComentarioRechazoMultiple('');
                 setErrorAprobacionMultiple(null);
                 setIdsFallidos([]);
                 setModalDictamenMultiple(true);
@@ -269,13 +296,14 @@ export const AprobacionesPage: React.FC = () => {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-xs">
+          <table className="w-full min-w-[900px] text-left text-xs">
             <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400">
               <tr>
                 <th className="w-10 px-3 py-3">
                   <span className="sr-only">Seleccionar movimiento</span>
                 </th>
                 <th className="px-4 py-3">Folio / emisión</th>
+                <th className="px-4 py-3">Serial</th>
                 <th className="px-4 py-3">Componente</th>
                 <th className="px-4 py-3">Línea</th>
                 <th className="px-4 py-3">Razón</th>
@@ -286,11 +314,11 @@ export const AprobacionesPage: React.FC = () => {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {pendientes.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
+                  <td colSpan={8} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center gap-2 text-slate-400">
                       <FileCheck2 className="h-10 w-10 text-emerald-500/70" />
                       <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                        {busquedaFechaHora || filtroCertificacion || busquedaLinea
+                        {busquedaFechaHora || filtroCertificacion || busquedaSerial
                           ? 'No hay solicitudes que coincidan con los filtros.'
                           : '¡Todo al día! No hay solicitudes pendientes.'}
                       </p>
@@ -315,12 +343,24 @@ export const AprobacionesPage: React.FC = () => {
                       {(item.fechaHora || `${item.fecha} ${item.hora}`).replace('T', ' ')}
                     </div>
                   </td>
+                  <td className="px-4 py-3 font-mono font-semibold text-slate-700 dark:text-slate-300">
+                    {item.serial || 'No disponible'}
+                  </td>
                   <td className="max-w-[260px] px-4 py-3">
                     <div className="truncate font-mono font-bold text-slate-800 dark:text-slate-200" title={item.matnr}>{item.matnr}</div>
                     <div className="truncate text-[11px] text-slate-500 dark:text-slate-400" title={item.descripcion}>{item.descripcion || item.serial}</div>
                   </td>
                   <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">
-                    {item.linea || 'Sin línea asignada'}
+                    <div title={item.linea || 'Sin línea asignada'}>
+                      <span className="block font-semibold text-slate-800 dark:text-slate-200">
+                        {item.datosDB?.LineaNombre || item.linea || 'Sin línea asignada'}
+                      </span>
+                      {item.datosDB?.LineaId != null && (
+                        <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
+                          Línea {item.datosDB.LineaId}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="max-w-[220px] px-4 py-3">
                     <div className="flex items-center gap-1.5">
@@ -337,20 +377,22 @@ export const AprobacionesPage: React.FC = () => {
                   <td className="px-4 py-3">
                     <div className="flex justify-center gap-2">
                       <Button
-                        variant="success"
+                        variant={seleccionados.includes(item.id) ? 'secondary' : 'success'}
                         size="sm"
                         className="min-w-[96px]"
                         icon={<Check className="h-3.5 w-3.5" />}
+                        disabled={seleccionados.includes(item.id) || aprobacionMultipleEnviando}
                         onClick={() => abrirRevision(item, 1)}
                       >
                         Aprobar
                       </Button>
                       <Button
-                        variant="danger"
+                        variant={seleccionados.includes(item.id) ? 'secondary' : 'danger'}
                         size="sm"
                         className="min-w-[96px]"
                         icon={<X className="h-3.5 w-3.5" />}
-                        onClick={() => abrirRevision(item, 2)}
+                        disabled={seleccionados.includes(item.id) || aprobacionMultipleEnviando}
+                        onClick={() => abrirRevision(item, 4)}
                       >
                         Denegar
                       </Button>
@@ -372,7 +414,7 @@ export const AprobacionesPage: React.FC = () => {
         subtitle={`${seleccionadosVisibles.length} movimiento(s) seleccionado(s)`}
         maxWidth="md"
       >
-        <form onSubmit={confirmarAprobacionMultiple} className="space-y-4">
+        <form onSubmit={prepararAprobacionMultiple} className="space-y-4">
           <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
             {decisionMultiple === 1
               ? 'Se aprobarán los movimientos seleccionados.'
@@ -391,6 +433,24 @@ export const AprobacionesPage: React.FC = () => {
               className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </label>
+          {decisionMultiple === 4 && rechazoMultipleIncluyeScrap && (
+            <label htmlFor="comentario-rechazo-multiple" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Comentario para el rechazo de Scrap
+              <textarea
+                id="comentario-rechazo-multiple"
+                required
+                maxLength={500}
+                rows={3}
+                value={comentarioRechazoMultiple}
+                onChange={(event) => setComentarioRechazoMultiple(event.target.value)}
+                disabled={aprobacionMultipleEnviando}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              />
+              <span className="mt-1 block font-normal text-slate-500 dark:text-slate-400">
+                Se aplicará a los movimientos Scrap seleccionados; solo estará visible durante esta sesión y no se guarda en SQL.
+              </span>
+            </label>
+          )}
           {idsFallidos.length > 0 && (
             <p className="text-xs text-rose-700 dark:text-rose-300">
               Folios con error: {idsFallidos.join(', ')}.
@@ -419,6 +479,48 @@ export const AprobacionesPage: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={confirmacionFinalMultiple}
+        onClose={() => {
+          if (!aprobacionMultipleEnviando) setConfirmacionFinalMultiple(false);
+        }}
+        title={decisionMultiple === 1 ? 'Confirmación final de aprobación' : 'Confirmación final de rechazo'}
+        subtitle={`${seleccionadosVisibles.length} movimiento(s) seleccionado(s)`}
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className={`rounded-lg border px-3 py-3 text-sm font-semibold ${
+            decisionMultiple === 1
+              ? 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
+              : 'border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200'
+          }`}>
+            {`¿Estás seguro de ${decisionMultiple === 1 ? 'aprobar' : 'rechazar'} los ${seleccionadosVisibles.length} movimientos seleccionados?`}
+          </p>
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            Esta acción actualizará los dictámenes en la base de datos y no se puede deshacer desde la aplicación.
+          </p>
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={aprobacionMultipleEnviando}
+              onClick={() => setConfirmacionFinalMultiple(false)}
+            >
+              Regresar
+            </Button>
+            <Button
+              type="button"
+              variant={decisionMultiple === 1 ? 'success' : 'danger'}
+              loading={aprobacionMultipleEnviando}
+              disabled={seleccionadosVisibles.length === 0}
+              onClick={confirmarAprobacionMultiple}
+            >
+              {`Sí, ${decisionMultiple === 1 ? 'aprobar' : 'rechazar'} ${seleccionadosVisibles.length}`}
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <Modal
@@ -536,6 +638,27 @@ export const AprobacionesPage: React.FC = () => {
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 placeholder="Nombre y apellido"
               />
+              {requiereComentarioRechazo && (
+                <>
+                  <label htmlFor="comentario-rechazo" className="mb-1 mt-3 block text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Comentario de rechazo
+                  </label>
+                  <textarea
+                    id="comentario-rechazo"
+                    name="comentario-rechazo"
+                    required
+                    maxLength={500}
+                    rows={3}
+                    value={comentarioRechazo}
+                    onChange={(event) => setComentarioRechazo(event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    placeholder="Describe brevemente el motivo del rechazo"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                    Solo se muestra en Movimientos durante esta sesión; no se guarda en la base de datos.
+                  </p>
+                </>
+              )}
             </section>
 
             {errorDictamen && (
@@ -551,7 +674,7 @@ export const AprobacionesPage: React.FC = () => {
                 type="submit"
                 variant={revision.decision === 1 ? 'success' : 'danger'}
                 loading={dictamenEnviando}
-                disabled={!nombreResponsable.trim()}
+                disabled={!nombreResponsable.trim() || (requiereComentarioRechazo && !comentarioRechazo.trim())}
               >
                 {revision.decision === 1 ? 'Confirmar aprobación' : 'Confirmar denegación'}
               </Button>

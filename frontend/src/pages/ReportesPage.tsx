@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
 import { Button } from '../components/common/Button';
+import { ChartExplanation } from '../components/common/ChartExplanation';
 import { Card } from '../components/common/Card';
 import { formatearNumero, descargarCSV, simularImpresionPDF } from '../utils/formatters';
 import { ScrapService } from '../services/scrapService';
@@ -354,6 +355,9 @@ export const ReportesPage: React.FC = () => {
             </BarChart>
           </ResponsiveContainer>
         </div>
+        <ChartExplanation>
+          Cada barra representa una certificación y su altura indica la suma de piezas en los movimientos que coinciden con los filtros y fechas seleccionados. El gráfico usa los registros cargados para este reporte; permite comparar cantidades entre certificaciones, pero no explica por qué difieren.
+        </ChartExplanation>
       </Card>
 
       {/* Tabla Avanzada: Desglose por Número de Parte (MATNR) */}
@@ -373,10 +377,20 @@ export const ReportesPage: React.FC = () => {
             </thead>
 
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal">
-              {resumenPorParte.length === 0 && (
+              {resumenPorParte.length === 0 && movimientosCargando &&
+                Array.from({ length: 5 }, (_, fila) => (
+                  <tr key={`skeleton-${fila}`} aria-hidden="true">
+                    {Array.from({ length: 4 }, (_, columna) => (
+                      <td key={columna} className="px-5 py-3.5">
+                        <div className="skeleton h-3.5 w-full" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              {resumenPorParte.length === 0 && !movimientosCargando && (
                 <tr>
                   <td colSpan={4} className="px-5 py-8 text-center text-slate-500">
-                    {movimientosCargando ? 'Cargando registros…' : 'No hay movimientos para los filtros seleccionados.'}
+                    No hay movimientos para los filtros seleccionados.
                   </td>
                 </tr>
               )}

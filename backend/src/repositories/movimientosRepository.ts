@@ -83,11 +83,14 @@ export class MovimientosRepository {
     const resultado = await consultarSQL<ResumenScrapLineaDB>(`
       SELECT
         certificacion.LineaId AS lineaId,
+        MAX(linea.Descripcion) AS lineaNombre,
         COUNT_BIG(*) AS movimientos,
         SUM(CONVERT(BIGINT, movimiento.cantidad)) AS piezasScrap
       FROM dbo.Movimientos AS movimiento
       LEFT JOIN dbo.Certificacion AS certificacion
         ON certificacion.id = movimiento.CertificacionId
+      LEFT JOIN [RapEnsambleEMM].[dbo].[Linea] AS linea
+        ON linea.linea = certificacion.LineaId
       WHERE movimiento.fecha_hora >= '${periodo.fechaInicio}'
         AND movimiento.fecha_hora < DATEADD(DAY, 1, CONVERT(date, '${periodo.fechaFin}', 23))
         AND movimiento.MovimientoTipoId = 1
@@ -99,6 +102,7 @@ export class MovimientosRepository {
       periodo: { fechaInicio: periodo.fechaInicio, fechaFin: periodo.fechaFin },
       datos: resultado.map((fila) => ({
         lineaId: fila.lineaId,
+        lineaNombre: fila.lineaNombre,
         movimientos: Number(fila.movimientos),
         piezasScrap: Number(fila.piezasScrap),
       })),
@@ -194,7 +198,7 @@ export class MovimientosRepository {
     }
 
     const resultado = await consultarSQL<MovimientoDetalleDTO>(
-      `SELECT movimiento.*, certificacion.LineaId AS LineaId,
+      `SELECT movimiento.*, certificacion.LineaId AS LineaId, linea.Descripcion AS LineaNombre,
               (SELECT TOP 1 NULLIF(LTRIM(RTRIM(catalogo.desc_Razon)), '')
                FROM dbo.vw_Scrap_PowerBI AS catalogo
                WHERE catalogo.MovimientoTipoId = movimiento.MovimientoTipoId
@@ -203,6 +207,8 @@ export class MovimientosRepository {
        FROM dbo.Movimientos AS movimiento
        LEFT JOIN dbo.Certificacion AS certificacion
          ON certificacion.id = movimiento.CertificacionId
+       LEFT JOIN [RapEnsambleEMM].[dbo].[Linea] AS linea
+         ON linea.linea = certificacion.LineaId
        ${filtros.fechaInicio && filtros.fechaFin ? '' : `
        CROSS JOIN (
          SELECT MAX(fecha_hora) AS fechaMaxima
@@ -219,7 +225,7 @@ export class MovimientosRepository {
       throw new Error('El identificador del movimiento no es válido.');
     }
     const resultado = await consultarSQL<MovimientoDetalleDTO>(`
-      SELECT movimiento.*, certificacion.LineaId AS LineaId,
+      SELECT movimiento.*, certificacion.LineaId AS LineaId, linea.Descripcion AS LineaNombre,
              (SELECT TOP 1 NULLIF(LTRIM(RTRIM(catalogo.desc_Razon)), '')
               FROM dbo.vw_Scrap_PowerBI AS catalogo
               WHERE catalogo.MovimientoTipoId = movimiento.MovimientoTipoId
@@ -228,6 +234,8 @@ export class MovimientosRepository {
       FROM dbo.Movimientos AS movimiento
       LEFT JOIN dbo.Certificacion AS certificacion
         ON certificacion.id = movimiento.CertificacionId
+      LEFT JOIN [RapEnsambleEMM].[dbo].[Linea] AS linea
+        ON linea.linea = certificacion.LineaId
       WHERE movimiento.[id] = ${id}
     `);
     const movimiento = resultado[0];
@@ -259,7 +267,7 @@ export class MovimientosRepository {
 
   async registrarDictamen(
     id: number,
-    aprobado: 1 | 2,
+    aprobado: 1 | 4,
     aprobadoPor: string,
   ): Promise<
     | { estado: 'actualizado'; movimiento: MovimientoDetalleDTO }

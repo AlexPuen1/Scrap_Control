@@ -26,7 +26,7 @@ Frontend React
                                 └─ SQL Server est04db / SOE
 ```
 
-El navegador nunca recibe `DB_API_BASE_URL`, `DB_SERVER`, `DB_DATABASE` o el texto SQL corporativo. Durante desarrollo, Vite reenvía `/api` a Express en `localhost:3001`. En producción el proxy del servidor debe proporcionar el mismo encaminamiento.
+El navegador nunca recibe `DB_API_BASE_URL`, `DB_SERVER`, `DB_DATABASE` o el texto SQL corporativo. Durante desarrollo, Vite reenvía `/api` a Express en `127.0.0.1:3001`. En producción el proxy del servidor debe proporcionar el mismo encaminamiento.
 
 ## Configuración
 
@@ -120,7 +120,7 @@ Se probaron entradas inválidas de fechas, mes, ID, decisión y razón; respondi
 
 ### Dictamen
 
-`PATCH /api/movimientos/:id/dictamen` recibe `{ "aprobado": 1 | 2, "aprobadoPor": "..." }`. Backend exige ID positivo entero seguro, decisión 1 o 2 y nombre recortado de 1–200 caracteres. Actualiza únicamente `dbo.Movimientos` con `id` correspondiente y `aprobado = 0`, asignando `aprobado`, `nvAprobadoPor` y `dtAprobado = GETDATE()`. Luego relee el registro para validar y formar la respuesta. Un registro ausente da 404; un registro que ya no es pendiente o no se actualizó da 409.
+`PATCH /api/movimientos/:id/dictamen` recibe `{ "aprobado": 1 | 4, "aprobadoPor": "..." }`. Backend exige ID positivo entero seguro, decisión 1 o 4 y nombre recortado de 1–200 caracteres. Actualiza únicamente `dbo.Movimientos` con `id` correspondiente y `aprobado = 0`, asignando `aprobado`, `nvAprobadoPor` y `dtAprobado = GETDATE()`. El código 2 representa procesado por otro software y SCRAPControl no lo escribe. Luego relee el registro para validar y formar la respuesta. Un registro ausente da 404; un registro que ya no es pendiente o no se actualizó da 409.
 
 El valor `aprobado = NULL` no pasa el predicado de pendiente. El nombre es texto de auditoría y no acredita identidad.
 

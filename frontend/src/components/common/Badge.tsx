@@ -32,6 +32,8 @@ export const Badge: React.FC<BadgeProps> = ({
           className={`w-1.5 h-1.5 rounded-full ${
             estatus === 'Aprobado'
               ? 'bg-emerald-500'
+              : estatus === 'Procesado'
+              ? 'bg-blue-500'
               : estatus === 'Pendiente'
               ? 'bg-amber-500'
               : estatus === 'Rechazado'

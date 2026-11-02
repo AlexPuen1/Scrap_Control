@@ -1,4 +1,4 @@
-export type EstatusMovimiento = 'Pendiente' | 'Aprobado' | 'Rechazado' | 'Sin dictamen' | 'En Cuarentena' | 'Retrabajo';
+export type EstatusMovimiento = 'Pendiente' | 'Aprobado' | 'Procesado' | 'Rechazado' | 'Otro estado' | 'Sin dictamen' | 'En Cuarentena' | 'Retrabajo';
 
 export type CategoriaMotivo = 
   | 'Scrap'
@@ -77,6 +77,7 @@ export interface MovimientoDB {
   Empleado: string | null;
   procesado: number | null;
   aprobado: number | null;
+  LineaNombre?: string | null;
   RazonId: number | null;
   DescripcionRazon?: string | null;
   centro_costo: string | null;
@@ -107,7 +108,7 @@ export interface Movimiento {
   empleadoId?: string; // EmpleadoId (varchar 50)
   empleado: string; // Empleado (varchar 250)
   procesado?: number; // procesado (int)
-  aprobado: number | null; // aprobado (int: 0=Pendiente, 1=Aprobado, 2=Rechazado)
+  aprobado: number | null; // aprobado (int: 0=Pendiente, 1=Aprobado, 2=Procesado, 4=Rechazado)
   razonId: number | null; // RazonId (int) -> dbo.EtiquetasCI
   descripcionRazon?: string;
   motivoEspecifico: string; // Descripción de la Razón
@@ -134,11 +135,13 @@ export interface Movimiento {
   lote?: string;
   observaciones?: string;
   comentariosAprobacion?: string;
+  comentarioRechazo?: string;
   historial: HitoHistorial[];
 }
 
 export interface ResumenScrapLinea {
   lineaId: number | null;
+  lineaNombre: string | null;
   movimientos: number;
   piezasScrap: number;
 }

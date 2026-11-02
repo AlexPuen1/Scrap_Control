@@ -28,23 +28,23 @@ Interfaz React 19 + TypeScript + Vite. El frontend consume únicamente las rutas
 
 ## Cliente y contratos HTTP
 
-La base de rutas se configura con `VITE_API_BASE_URL`; si no existe, es `/api`. Durante desarrollo Vite enruta `/api` a `http://localhost:3001`.
+La base de rutas se configura con `VITE_API_BASE_URL`; si no existe, es `/api`. Durante desarrollo Vite enruta `/api` a `http://127.0.0.1:3001`.
 
 | Interacción | Solicitud | Efecto |
 |---|---|---|
 | Carga compartida | `GET /api/movimientos` | Filas del periodo reciente calculado por el backend. |
 | Búsqueda Dashboard | `GET /api/movimientos?fechaInicio=...&fechaFin=...` | Fechas de UI son inclusivas; el cliente envía fin exclusivo (día posterior). |
-| Fallas por línea | `GET /api/movimientos/fallas-por-linea` | Periodo reciente y agregado SQL por `LineaId`. |
+| Fallas por línea | `GET /api/movimientos/fallas-por-linea` | Periodo reciente y agregado SQL por número y nombre de línea. |
 | Comparación mensual | `GET /api/movimientos/comparativa-mensual?mes=YYYY-MM` | Agrega el mes seleccionado y el anterior por tendencia diaria, certificación, razón y línea; independiente del conjunto compartido. |
 | Opciones de razón | `GET /api/movimientos/razones?movimientoTipoId=N` | Descripciones válidas desde `dbo.vw_Scrap_PowerBI`. |
 | Guardar razón | `PATCH /api/movimientos/:id/razon` | `{ razonId: number | null }`; cambia datos reales. |
-| Aprobar/rechazar | `PATCH /api/movimientos/:id/dictamen` | `{ aprobado: 1 | 2, aprobadoPor }`; cambia datos reales. |
+| Aprobar/rechazar | `PATCH /api/movimientos/:id/dictamen` | `{ aprobado: 1 | 4, aprobadoPor }`; `1` aprueba y `4` rechaza; cambia datos reales. |
 
 El cliente comprueba `response.ok`, `exitoso` y que exista la estructura de datos esperada. Si la llamada falla, propaga el error a la página/contexto; no sustituye una respuesta SQL fallida por movimientos mock.
 
 ### Adaptación de fila
 
-`adaptarMovimiento()` mantiene la fila original bajo `datosDB`, deriva fecha/hora, etiqueta el estado y obtiene el nombre del tipo a partir del mapa `MOVIMIENTO_TIPOS_SSMS`. Convierte `LineaId` a texto «Línea N» o «Sin línea asignada». La API no entrega nombre enriquecido del material, empleado, costos, historial ni unidad oficial; varios valores de presentación pueden estar vacíos, ser constantes o locales.
+`adaptarMovimiento()` mantiene la fila original bajo `datosDB`, deriva fecha/hora, etiqueta el estado y obtiene el nombre del tipo a partir del mapa `MOVIMIENTO_TIPOS_SSMS`. La API entrega `LineaNombre` y `LineaId`; si falta el nombre, la interfaz conserva una etiqueta de respaldo. La API no entrega nombre enriquecido del material, empleado, costos, historial ni unidad oficial; varios valores de presentación pueden estar vacíos, ser constantes o locales.
 
 ## Filtros y presentación
 
@@ -52,8 +52,8 @@ El cliente comprueba `response.ok`, `exitoso` y que exista la estructura de dato
 - El Dashboard consulta otro intervalo al pulsar **Buscar**. El error y rango personalizado corresponden a esa página; no reemplaza la lista compartida para las otras pantallas.
 - Reportes no solicita al backend el rango filtrado: reduce en memoria el conjunto cargado por el contexto. Por tanto no puede mostrar fechas que quedaron fuera de ese conjunto.
 - Fallas por línea es una consulta de agregado separada; no cambia con el rango del Dashboard.
-- Movimientos oculta la credencial como columna principal, pero permite buscarla y el CSV puede contenerla porque exporta la fila original.
-- El ID de línea se presenta, no su nombre, porque no se consulta catálogo de líneas.
+- Movimientos oculta la credencial como columna principal; el CSV también excluye credenciales y datos identificables del aprobador.
+- El nombre de línea procede de `[RapEnsambleEMM].[dbo].[Linea].Descripcion`, relacionado mediante `Certificacion.LineaId = Linea.linea`; se muestra junto al número.
 - Los rangos visibles de las gráficas se calculan a partir de las fechas efectivamente representadas.
 - Los colores de las series conservan su estilo habitual. Los números y valores que aparecen en los tooltips son blancos para mejorar su lectura sobre el fondo oscuro.
 
@@ -100,7 +100,7 @@ npm run preview
 - El navegador no debe recibir secretos ni conectarse a `executeSQLCommand`.
 - La API local no implementa autenticación ni rol gerente; sus cambios persistentes son accesibles a clientes que alcancen el backend.
 - El campo de responsable es texto suministrado por el usuario.
-- Express permite CORS abierto; configura orígenes seguros antes de desplegar.
+- CORS se limita a `CORS_ORIGINS` (orígenes locales por defecto), pero no sustituye autenticación ni autorización.
 - Datos de costos, historial, empleados y funcionalidades SAP no deben usarse como registros oficiales mientras sigan siendo locales/mock.
 
 Consulta la [documentación técnica](../Documentacion.md), el [README del proyecto](../README.md) y la [guía de conexión](../BaseDeDatos/ConexionBaseDatos.md).

@@ -18,7 +18,6 @@ interface ResultadoSQL<T> {
 }
 
 let estaConectado = false;
-let ultimoError: string | null = null;
 
 async function ejecutarComandoSQL<T>(command: string): Promise<ResultadoSQL<T>> {
   let response: Response;
@@ -31,7 +30,6 @@ async function ejecutarComandoSQL<T>(command: string): Promise<ResultadoSQL<T>> 
     });
   } catch (error) {
     estaConectado = false;
-    ultimoError = error instanceof Error ? error.message : 'No fue posible comunicarse con la API corporativa.';
     throw error;
   }
 
@@ -41,17 +39,14 @@ async function ejecutarComandoSQL<T>(command: string): Promise<ResultadoSQL<T>> 
     resultado = JSON.parse(contenido) as ResultadoSQL<T>;
   } catch {
     estaConectado = false;
-    ultimoError = `La API SQL respondió con un formato no JSON (HTTP ${response.status}).`;
-    throw new Error(ultimoError);
+    throw new Error(`La API SQL respondió con un formato no JSON (HTTP ${response.status}).`);
   }
 
   if (!response.ok || resultado.success !== true) {
     estaConectado = false;
-    ultimoError = resultado.message || `La API SQL respondió HTTP ${response.status}.`;
     throw new Error(resultado.message || `La API SQL respondió HTTP ${response.status}.`);
   }
   estaConectado = true;
-  ultimoError = null;
   return resultado;
 }
 
@@ -65,10 +60,10 @@ export async function consultarSQL<T>(command: string): Promise<T[]> {
 
 export async function actualizarDictamenSQL(
   id: number,
-  aprobado: 1 | 2,
+  aprobado: 1 | 4,
   aprobadoPor: string,
 ): Promise<number> {
-  if (!Number.isSafeInteger(id) || id < 1 || (aprobado !== 1 && aprobado !== 2)) {
+  if (!Number.isSafeInteger(id) || id < 1 || (aprobado !== 1 && aprobado !== 4)) {
     throw new Error('Los datos del dictamen no son válidos.');
   }
   if (aprobadoPor.length === 0 || aprobadoPor.length > 200) {
@@ -113,12 +108,11 @@ export async function probarConexionSQLServer(): Promise<{ exitoso: boolean; bas
     }
 
     estaConectado = true;
-    ultimoError = null;
     return { exitoso: true, baseDeDatos, mensaje: 'Conexión verificada mediante la API corporativa.' };
   } catch (error) {
     estaConectado = false;
-    ultimoError = error instanceof Error ? error.message : 'Error desconocido al consultar la API corporativa.';
-    return { exitoso: false, mensaje: ultimoError };
+    const mensaje = error instanceof Error ? error.message : 'Error desconocido al consultar la API corporativa.';
+    return { exitoso: false, mensaje };
   }
 }
 
@@ -132,22 +126,8 @@ export async function conectarSQLServer(): Promise<null> {
   return null;
 }
 
-export function obtenerEstadoConexion() {
-  return {
-    conectado: estaConectado,
-    servidor,
-    baseDeDatos,
-    autenticacion: 'API corporativa',
-    cifrado: apiBaseUrl.startsWith('https://'),
-    confiarCertificado: true,
-    ultimoError,
-    tablasObjetivo: {
-      principal: 'dbo.Movimientos',
-      tipos: 'dbo.MovimientoTipo',
-      razones: 'dbo.EtiquetasCI',
-      certificaciones: 'dbo.Certificacion',
-    },
-  };
+export function estaConectadoSQL(): boolean {
+  return estaConectado;
 }
 
 const archivoEjecutado = process.argv[1] ? path.resolve(process.argv[1]) : '';

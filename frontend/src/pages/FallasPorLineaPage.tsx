@@ -11,6 +11,7 @@ import {
   YAxis,
 } from 'recharts';
 import { Card } from '../components/common/Card';
+import { ChartExplanation } from '../components/common/ChartExplanation';
 import { ScrapService } from '../services/scrapService';
 import type { ReporteScrapLinea, ResumenScrapLinea } from '../types';
 import { formatearNumero } from '../utils/formatters';
@@ -53,7 +54,8 @@ export const FallasPorLineaPage: React.FC = () => {
     const consulta = busqueda.trim().toLocaleLowerCase();
     if (!consulta) return resumenPorLinea;
     return resumenPorLinea.filter((fila) => {
-      const etiqueta = fila.lineaId === null ? 'sin linea asignada' : `linea ${fila.lineaId}`;
+      const etiqueta = fila.lineaNombre?.toLocaleLowerCase()
+        || (fila.lineaId === null ? 'sin linea asignada' : `linea ${fila.lineaId}`);
       return etiqueta.includes(consulta)
         || String(fila.lineaId ?? '').includes(consulta)
         || String(fila.piezasScrap).includes(consulta);
@@ -62,7 +64,11 @@ export const FallasPorLineaPage: React.FC = () => {
 
   const totalPiezasScrap = resumenPorLinea.reduce((total, fila) => total + fila.piezasScrap, 0);
   const lineaMasAfectada = resumenPorLinea[0];
-  const nombreLinea = (lineaId: number | null) => lineaId === null ? 'Sin línea asignada' : `Línea ${lineaId}`;
+  const nombreLinea = (lineaId: number | null) => {
+    if (lineaId === null) return 'Sin línea asignada';
+    const nombre = resumenPorLinea.find((fila) => fila.lineaId === lineaId)?.lineaNombre;
+    return nombre ? `${nombre} (Línea ${lineaId})` : `Línea ${lineaId}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -103,7 +109,7 @@ export const FallasPorLineaPage: React.FC = () => {
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <p>
           La relación se obtiene de SQL Server: `Movimientos.CertificacionId` → `Certificacion.id` →
-          {' '}`Certificacion.LineaId`. El reporte incluye el mes más reciente disponible
+          {' '}`Certificacion.LineaId` relacionado con `RapEnsambleEMM.dbo.Linea.linea`. El reporte incluye el mes más reciente disponible
           {periodo ? ` (${periodo.fechaInicio} – ${periodo.fechaFin})` : '.'}
         </p>
       </div>
@@ -133,7 +139,13 @@ export const FallasPorLineaPage: React.FC = () => {
       >
         {resumenPorLinea.length === 0 ? (
           <div className="py-12 text-center text-sm text-slate-500">
-            {cargando ? 'Cargando movimientos…' : 'No hay movimientos Scrap para mostrar.'}
+            {cargando ? (
+              <div className="space-y-3" aria-hidden="true">
+                {Array.from({ length: 5 }, (_, fila) => (
+                  <div key={fila} className="skeleton h-8 w-full" />
+                ))}
+              </div>
+            ) : 'No hay movimientos Scrap para mostrar.'}
           </div>
         ) : (
           <>
@@ -172,7 +184,7 @@ export const FallasPorLineaPage: React.FC = () => {
                         type="category"
                         dataKey="lineaId"
                         tickFormatter={(value: number | null) => nombreLinea(value)}
-                        width={125}
+                        width={240}
                         tick={{ fontSize: 10, fill: '#64748b' }}
                         axisLine={false}
                         tickLine={false}
@@ -204,6 +216,9 @@ export const FallasPorLineaPage: React.FC = () => {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+                <ChartExplanation>
+                  Cada barra muestra la suma de piezas Scrap registradas para una línea en el periodo indicado; las líneas se ordenan de mayor a menor cantidad. El nombre y número identifican la línea relacionada con la certificación. «Sin línea asignada» reúne registros sin esa relación. La gráfica cuenta registros de la base y no determina por qué ocurrió el Scrap.
+                </ChartExplanation>
 
                 <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
                   <table className="w-full min-w-[520px] text-left text-sm">
@@ -217,7 +232,16 @@ export const FallasPorLineaPage: React.FC = () => {
                     <tbody className="divide-y divide-slate-100 text-slate-700 dark:divide-slate-800 dark:text-slate-300">
                       {lineasFiltradas.map((fila) => (
                         <tr key={fila.lineaId ?? 'sin-linea'}>
-                          <td className="px-4 py-3 font-semibold">{nombreLinea(fila.lineaId)}</td>
+                          <td className="px-4 py-3">
+                            <span className="block font-semibold text-slate-800 dark:text-slate-200">
+                              {fila.lineaNombre || (fila.lineaId === null ? 'Sin línea asignada' : 'Nombre no disponible')}
+                            </span>
+                            {fila.lineaId !== null && (
+                              <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                                Línea {fila.lineaId}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-right font-mono">{formatearNumero(fila.movimientos)}</td>
                           <td className="px-4 py-3 text-right font-mono font-bold">
                             {formatearNumero(fila.piezasScrap)}

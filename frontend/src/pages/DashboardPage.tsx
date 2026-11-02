@@ -10,6 +10,7 @@ import {
   Flame,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -26,6 +27,7 @@ import { useScrap } from '../context/ScrapContext';
 import { StatCard } from '../components/common/StatCard';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
+import { ChartExplanation } from '../components/common/ChartExplanation';
 import { formatearNumero, descargarCSV } from '../utils/formatters';
 import { ScrapService } from '../services/scrapService';
 import type { Movimiento } from '../types';
@@ -174,7 +176,34 @@ export const DashboardPage: React.FC = () => {
   );
   const pendientesPeriodo = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 0).length;
   const aprobadosPeriodo = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 1).length;
-  const rechazadosPeriodo = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 2).length;
+  const rechazadosPeriodo = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 4).length;
+  const dictaminadosPeriodo = aprobadosPeriodo + rechazadosPeriodo;
+  const tasaAprobacion = dictaminadosPeriodo > 0 ? Math.round((aprobadosPeriodo / dictaminadosPeriodo) * 100) : null;
+  const principalRazon = topMotivosData[0];
+  const principalCertificacion = incidenciaPorLinea[0];
+  const resumenEjecutivo = [
+    {
+      titulo: 'Principal razón de scrap',
+      valor: principalRazon ? principalRazon.nombreCompleto : 'Sin datos',
+      detalle: principalRazon ? `${formatearNumero(principalRazon.value)} piezas en el periodo` : 'No hay movimientos Scrap',
+      color: 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40',
+      icono: <Flame className="h-4 w-4" />,
+    },
+    {
+      titulo: 'Certificación con más piezas',
+      valor: principalCertificacion ? `Certificación ${principalCertificacion.certificacion}` : 'Sin datos',
+      detalle: principalCertificacion ? `${formatearNumero(principalCertificacion.piezas)} piezas registradas` : 'No hay movimientos',
+      color: 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40',
+      icono: <AlertOctagon className="h-4 w-4" />,
+    },
+    {
+      titulo: 'Tasa de aprobación',
+      valor: tasaAprobacion === null ? 'Sin dictámenes' : `${tasaAprobacion}%`,
+      detalle: `${dictaminadosPeriodo} dictaminados · ${pendientesPeriodo} pendientes`,
+      color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40',
+      icono: <CheckCircle2 className="h-4 w-4" />,
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -186,7 +215,7 @@ export const DashboardPage: React.FC = () => {
               Monitoreo y Control de Scrap
             </h1>
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
-              <Flame className="w-3.5 h-3.5 text-amber-500 animate-bounce" /> {turnoActivo}
+              <Flame className="w-3.5 h-3.5 text-amber-500 animate-pulse" /> {turnoActivo}
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -274,7 +303,40 @@ export const DashboardPage: React.FC = () => {
           </button>
         </div>
       )}
-      {cargandoDashboard && <p className="text-xs text-slate-500">Consultando dbo.Movimientos para {etiquetaPeriodo}…</p>}
+      {cargandoDashboard && (
+        <div className="space-y-2" aria-live="polite">
+          <p className="text-xs text-slate-500">Consultando dbo.Movimientos para {etiquetaPeriodo}…</p>
+          <div className="skeleton h-1.5 w-full" />
+        </div>
+      )}
+
+      {/* Resumen ejecutivo: lectura rápida para dirección */}
+      {!cargandoDashboard && movimientosDelPeriodo.length > 0 && (
+        <motion.section
+          aria-label="Resumen ejecutivo"
+          initial="oculto"
+          animate="visible"
+          variants={{ oculto: {}, visible: { transition: { staggerChildren: 0.08 } } }}
+          className="grid grid-cols-1 gap-3 md:grid-cols-3"
+        >
+          {resumenEjecutivo.map((item) => (
+            <motion.div
+              key={item.titulo}
+              variants={{ oculto: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0 } }}
+              className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/80 p-3.5 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/80"
+            >
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${item.color}`}>
+                {item.icono}
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{item.titulo}</p>
+                <p className="truncate text-sm font-bold text-slate-900 dark:text-white" title={item.valor}>{item.valor}</p>
+                <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{item.detalle}</p>
+              </div>
+            </motion.div>
+          ))}
+        </motion.section>
+      )}
 
       {/* Tarjetas Principales de KPIs (Power BI & MES Style) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -284,6 +346,7 @@ export const DashboardPage: React.FC = () => {
           subvalor="El costo no se calcula: no existe en los campos integrados."
           icono={<AlertOctagon className="w-6 h-6" />}
           colorAccent="rose"
+          delay={0}
         />
 
         <StatCard
@@ -297,6 +360,7 @@ export const DashboardPage: React.FC = () => {
             etiqueta: 'Dictamen disponible',
           }}
           colorAccent="amber"
+          delay={0.08}
           onClick={() => navigate('/aprobaciones')}
         />
 
@@ -311,6 +375,7 @@ export const DashboardPage: React.FC = () => {
             etiqueta: 'Estado confirmado',
           }}
           colorAccent="emerald"
+          delay={0.16}
         />
 
         <StatCard
@@ -324,6 +389,7 @@ export const DashboardPage: React.FC = () => {
             etiqueta: 'Estado confirmado',
           }}
           colorAccent="blue"
+          delay={0.24}
         />
       </div>
 
@@ -372,10 +438,15 @@ export const DashboardPage: React.FC = () => {
                   strokeWidth={2.5}
                   fillOpacity={1}
                   fill="url(#colorScrap)"
+                  animationDuration={900}
+                  animationEasing="ease-out"
                 />
               </AreaChart>
             </ResponsiveContainer>
           </div>
+          <ChartExplanation>
+            Cada punto muestra cuántas piezas Scrap se registraron en una fecha y hora. El eje horizontal indica cuándo ocurrió el registro y el vertical cuántas piezas se anotaron. Los datos vienen de los movimientos tipo Scrap del periodo elegido; un valor alto señala más piezas registradas en ese momento, no explica la causa.
+          </ChartExplanation>
         </Card>
       </div>
 
@@ -408,7 +479,7 @@ export const DashboardPage: React.FC = () => {
                     <span key="name" className="text-white">Total Piezas</span>,
                   ]}
                 />
-                <Bar dataKey="piezas" fill="#3b82f6" radius={[6, 6, 0, 0]}>
+                <Bar dataKey="piezas" fill="#3b82f6" radius={[6, 6, 0, 0]} animationDuration={800} animationEasing="ease-out">
                   {incidenciaPorLinea.map((entry, index) => (
                     <Cell
                       key={`bar-${index}`}
@@ -419,6 +490,9 @@ export const DashboardPage: React.FC = () => {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <ChartExplanation>
+            Cada barra corresponde a una certificación. Su altura representa la suma de piezas registradas en esa certificación durante el periodo; aquí se incluyen todos los tipos de movimiento, no solo Scrap. Sirve para localizar dónde se concentra la cantidad registrada, pero no indica por sí sola el motivo.
+          </ChartExplanation>
         </Card>
 
         {/* Principales razones asociadas al Scrap */}
@@ -464,8 +538,8 @@ export const DashboardPage: React.FC = () => {
                   labelStyle={{ color: '#ffffff' }}
                   itemStyle={{ color: '#ffffff' }}
                 />
-                <Bar dataKey="value" name="Piezas" radius={[0, 6, 6, 0]}>
-                  {topMotivosData.map((dato, index) => (
+                <Bar dataKey="value" name="Piezas" radius={[0, 6, 6, 0]} animationDuration={800} animationEasing="ease-out">
+                  {topMotivosData.map((_dato, index) => (
                     <Cell
                       key={`motivo-${index}`}
                       fill={COLORES_MOTIVOS[index % COLORES_MOTIVOS.length]}
@@ -475,6 +549,9 @@ export const DashboardPage: React.FC = () => {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <ChartExplanation>
+            Muestra las cinco razones con más piezas en movimientos tipo Scrap durante el periodo. Cada barra es una razón y su longitud representa la cantidad; «Sin razón» agrupa registros que no tienen una razón asignada. El nombre describe el dato capturado, no confirma una causa raíz.
+          </ChartExplanation>
         </Card>
       </div>
 

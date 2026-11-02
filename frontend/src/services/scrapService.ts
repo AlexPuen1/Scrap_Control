@@ -6,16 +6,22 @@ function adaptarMovimiento(row: MovimientoDB): Movimiento {
   const fecha = fechaHora.slice(0, 10);
   const hora = fechaHora.slice(11, 16);
   const tipo = MOVIMIENTO_TIPOS_SSMS.find((item) => item.id === row.MovimientoTipoId);
-  const estatus = row.aprobado === 1
+  const aprobado = row.aprobado === null ? null : Number(row.aprobado);
+  const estadoValido = aprobado === null || Number.isSafeInteger(aprobado);
+  const estatus = !estadoValido
+    ? 'Otro estado'
+    : aprobado === 1
     ? 'Aprobado'
-    : row.aprobado === 2
+    : aprobado === 2
+      ? 'Procesado'
+    : aprobado === 4
       ? 'Rechazado'
-      : row.aprobado === 0
+      : aprobado === 0
         ? 'Pendiente'
         : 'Sin dictamen';
 
   return {
-    datosDB: row,
+    datosDB: { ...row, aprobado: estadoValido ? aprobado : null },
     id: String(row.id),
     certificacionId: row.CertificacionId,
     matnr: row.MATNR,
@@ -29,7 +35,8 @@ function adaptarMovimiento(row: MovimientoDB): Movimiento {
     cantidad: row.cantidad,
     salida: row.salida,
     retorno: row.retorno,
-    aprobado: row.aprobado,
+    aprobado: estadoValido ? aprobado : null,
+    procesado: row.procesado ?? undefined,
     razonId: row.RazonId,
     descripcionRazon: row.DescripcionRazon || '',
     motivoEspecifico: row.DescripcionRazon || '',
@@ -39,7 +46,9 @@ function adaptarMovimiento(row: MovimientoDB): Movimiento {
     dtAprobado: row.dtAprobado || undefined,
     empleado: '',
     descripcion: '',
-    linea: row.LineaId === null || row.LineaId === undefined ? 'Sin línea asignada' : `Línea ${row.LineaId}`,
+    linea: row.LineaNombre || (row.LineaId === null || row.LineaId === undefined
+      ? 'Sin línea asignada'
+      : `Línea ${row.LineaId}`),
     estatus,
     unidad: 'PZA',
     costoUnitario: 0,
@@ -74,7 +83,7 @@ async function solicitarMovimiento(id: string): Promise<Movimiento> {
   return adaptarMovimiento(body.datos);
 }
 
-async function enviarDictamen(id: string, aprobado: 1 | 2, aprobadoPor: string): Promise<void> {
+async function enviarDictamen(id: string, aprobado: 1 | 4, aprobadoPor: string): Promise<void> {
   const response = await fetch(`${API_BASE}/movimientos/${encodeURIComponent(id)}/dictamen`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -150,5 +159,5 @@ export const ScrapService = {
 
   aprobarMovimiento: (id: string, aprobadoPor: string) => enviarDictamen(id, 1, aprobadoPor),
 
-  rechazarMovimiento: (id: string, aprobadoPor: string) => enviarDictamen(id, 2, aprobadoPor),
+  rechazarMovimiento: (id: string, aprobadoPor: string) => enviarDictamen(id, 4, aprobadoPor),
 };

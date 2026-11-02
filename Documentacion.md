@@ -62,7 +62,7 @@ npm test
 npm run dev
 ```
 
-El frontend de Vite usa normalmente `http://localhost:5173`; Express usa `http://localhost:3001`. `npm test` ejecuta pruebas unitarias aisladas del backend, sin conexión SQL; `npm run test:db` verifica conexión con un `SELECT` de solo lectura. `npm run build` ejecuta compilación TypeScript del backend y build TypeScript/Vite del frontend. `npm start` arranca el backend compilado y `vite preview`; no sustituye la configuración de un servidor productivo.
+El frontend de Vite usa normalmente `http://localhost:5173`; Express escucha solo en `http://127.0.0.1:3001`. `npm test` ejecuta pruebas unitarias aisladas del backend, sin conexión SQL; `npm run test:db` verifica conexión con un `SELECT` de solo lectura. `npm run build` ejecuta compilación TypeScript del backend y build TypeScript/Vite del frontend. `npm start` arranca el backend compilado y `vite preview`; no sustituye la configuración de un servidor productivo.
 
 ### Variables
 
@@ -124,7 +124,7 @@ La lista puede recibir `fechaInicio` inclusiva y `fechaFin` exclusiva, ambas `YY
 
 `GET /api/movimientos` admite `tipoId`, `aprobado`, `razonId` y `busqueda`, además de fechas. El SQL obtiene la fila de movimiento y la consulta de fecha; después `aplicarFiltros()` filtra tipo, dictamen, razón y texto en el proceso Node. La búsqueda considera ID, serial, MATNR, MATNR_FG, credencial, nombre local del tipo, RazonId y almacén. No hay `LIMIT`, paginación ni filtros SQL para esos cuatro criterios en el contrato actual.
 
-La lista ordena por ID descendente. El backend enriquece `MovimientoTipoNombre` mediante un mapa local, no consulta `dbo.MovimientoTipo`. El DTO añade `LineaId` y `DescripcionRazon`; ambos son valores derivados, no columnas físicas de `dbo.Movimientos`.
+La lista ordena por ID descendente. El backend enriquece `MovimientoTipoNombre` mediante un mapa local, no consulta `dbo.MovimientoTipo`. El DTO añade `LineaId`, `LineaNombre` y `DescripcionRazon`; son valores derivados, no columnas físicas de `dbo.Movimientos`. `LineaNombre` se obtiene de `[RapEnsambleEMM].[dbo].[Linea]`, relacionando `Certificacion.LineaId` con `Linea.linea` y mostrando `Linea.Descripcion`; la consulta requiere acceso a esa base y tabla. La columna rotulada `Procesado` muestra el valor de `dbo.Movimientos.aprobado`, con los códigos `1` aprobado, `2` procesado y `4` rechazado; no muestra el campo SQL `procesado`, que SCRAPControl no modifica.
 
 ### Reporte de Scrap por línea
 
@@ -132,9 +132,10 @@ La lista ordena por ID descendente. El backend enriquece `MovimientoTipoNombre` 
 
 ```text
 Movimientos.CertificacionId → Certificacion.id → Certificacion.LineaId
+Certificacion.LineaId → [RapEnsambleEMM].[dbo].[Linea].linea → Linea.Descripcion
 ```
 
-La salida contiene `periodo` (`fechaInicio`, `fechaFin`) y `datos` (`lineaId`, `movimientos`, `piezasScrap`). `COUNT_BIG(*)` calcula movimientos y `SUM(cantidad)` piezas. La unión es `LEFT JOIN`, por lo que registros sin certificación asociada pueden agruparse con `lineaId = null`. Esta consulta no usa el periodo del Dashboard ni un filtro de usuario. La interfaz incluye el periodo y usa barras horizontales.
+La salida contiene `periodo` (`fechaInicio`, `fechaFin`) y `datos` (`lineaId`, `lineaNombre`, `movimientos`, `piezasScrap`). `COUNT_BIG(*)` calcula movimientos y `SUM(cantidad)` piezas. La unión a certificación y al catálogo de líneas es `LEFT JOIN`, por lo que valores sin correspondencia pueden aparecer con nombre vacío o `lineaId = null`. Esta consulta no usa el periodo del Dashboard ni un filtro de usuario. La interfaz incluye el periodo y usa barras horizontales con el nombre de línea.
 
 ### Comparación mensual
 
@@ -155,9 +156,9 @@ La comparación es independiente de los rangos de Dashboard, Reportes y Fallas p
 | `GET` | `/api/movimientos/razones?movimientoTipoId=N` | `{ exitoso, datos: [{ id, descripcion }] }`; requiere tipo entero positivo. |
 | `GET` | `/api/movimientos/:id` | `{ exitoso, datos }`; entero y respuesta 404 si no existe. |
 | `PATCH` | `/api/movimientos/:id/razon` | JSON `{ razonId: entero positivo | null }`; valida razón para el tipo del movimiento. |
-| `PATCH` | `/api/movimientos/:id/dictamen` | JSON `{ aprobado: 1 | 2, aprobadoPor: string }`; solo modifica pendiente `0`. |
+| `PATCH` | `/api/movimientos/:id/dictamen` | JSON `{ aprobado: 1 | 4, aprobadoPor: string }`; `1` aprueba, `4` rechaza y solo modifica pendiente `0`. |
 
-Las rutas literales (`fallas-por-linea`, `razones`) y rutas de acción se registran antes de `/:id`.
+Las rutas literales (`fallas-por-linea`, `razones`) y rutas de acción se registran antes de `/:id`. Al rechazar Scrap desde la interfaz, se exige un comentario y se muestra en Movimientos durante la sesión actual. No se envía a Express ni se persiste; se pierde al recargar la aplicación. En rechazo múltiple, el comentario se aplica a cada movimiento Scrap seleccionado.
 
 ### Respuestas de error
 
@@ -168,7 +169,7 @@ Los controllers responden JSON `{ exitoso: false, mensaje }`. Según la operaci�
 - `409`: el dictamen ya no está pendiente o el `UPDATE` no afectó la fila.
 - `500`: error de API SQL, lectura, actualización o verificación.
 
-`GET /api/movimientos/:id` exige un ID decimal positivo completo y seguro; no acepta sufijos, decimales, cero ni valores fuera del rango seguro. Los endpoints de escritura exigen también ID positivo seguro. El controller del dictamen acepta únicamente `1` o `2` y nombre recortado de 1 a 200 caracteres. `razonId` debe ser `null` o entero positivo seguro.
+`GET /api/movimientos/:id` exige un ID decimal positivo completo y seguro; no acepta sufijos, decimales, cero ni valores fuera del rango seguro. Los endpoints de escritura exigen también ID positivo seguro. El controller del dictamen acepta únicamente `1` (aprobado) o `4` (rechazado) y nombre recortado de 1 a 200 caracteres. El valor `2` ya no se interpreta ni se escribe como rechazo; los datos históricos no se migran. `razonId` debe ser `null` o entero positivo seguro.
 
 ## 8. Escrituras de negocio
 
@@ -178,13 +179,13 @@ Los controllers responden JSON `{ exitoso: false, mensaje }`. Según la operaci�
 
 ```sql
 UPDATE dbo.Movimientos
-SET aprobado = 1 | 2,
+SET aprobado = 1 | 4,
     nvAprobadoPor = N'...',
     dtAprobado = GETDATE()
 WHERE id = ... AND aprobado = 0
 ```
 
-El repositorio vuelve a leer el movimiento. Si no existe, responde 404; si no se actualizó/no era pendiente, 409; al confirmar, devuelve el registro actualizado. Los `NULL` no son candidatos por la condición `aprobado = 0`. El nombre guardado no es autenticación.
+El repositorio vuelve a leer el movimiento. Si no existe, responde 404; si no se actualizó/no era pendiente, 409; al confirmar, devuelve el registro actualizado. Los `NULL` no son candidatos por la condición `aprobado = 0`. El nombre guardado no es autenticación. Para rechazo de Scrap, la interfaz pide comentario, pero el esquema actual no lo admite: se conserva solo en memoria de la sesión del navegador y no se envía al backend, no se escribe en SQL y se pierde al recargar.
 
 ### Dictamen múltiple
 
@@ -202,11 +203,11 @@ Ambos cambios son persistentes y no tienen autenticación/autorización en el ba
 
 El repositorio consulta `movimiento.*`, más `LineaId` y `DescripcionRazon` derivados. El conjunto físico de columnas conocido figura en [`BaseDeDatos/Diccionario_Datos_Movimientos.md`](BaseDeDatos/Diccionario_Datos_Movimientos.md). La UI conserva algunos campos originales para su ficha y aprobaciones; el CSV aplica una selección separada y explícita de columnas, descrita en la sección 10.
 
-`aprobado`: `0` pendiente, `1` aprobado, `2` rechazado, `NULL` sin dictamen. `MovimientoTipoId = 1` se trata como Scrap. El nombre de tipo sale de un mapa local. Las razones descriptivas salen de `dbo.vw_Scrap_PowerBI`.
+`aprobado`: `0` pendiente, `1` aprobado, `2` procesado, `4` rechazado, `NULL` sin dictamen. Otros valores desconocidos se muestran como otro estado; no se modifican automáticamente. `MovimientoTipoId = 1` se trata como Scrap. El nombre de tipo sale de un mapa local. Las razones descriptivas salen de `dbo.vw_Scrap_PowerBI`.
 
 ### `dbo.Certificacion`
 
-Se usa la relación `Certificacion.id` y `Certificacion.LineaId`. El catálogo de nombres de línea no se consulta; el usuario ve el identificador numérico como «Línea N».
+Se usa la relación `Certificacion.id` y `Certificacion.LineaId`. El nombre se obtiene desde `[RapEnsambleEMM].[dbo].[Linea]`, donde `Linea.linea` corresponde al ID de línea y `Linea.Descripcion` es el nombre mostrado en Movimientos, Aprobaciones y Fallas por línea.
 
 ### Vista `dbo.vw_Scrap_PowerBI`
 

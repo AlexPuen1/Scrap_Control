@@ -200,7 +200,7 @@ export const MovimientoDetallePage: React.FC = () => {
         className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
           movimiento.aprobado === 1
             ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-            : movimiento.aprobado === 2
+            : movimiento.aprobado === 4
             ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200'
             : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
         }`}
@@ -209,12 +209,12 @@ export const MovimientoDetallePage: React.FC = () => {
           <ShieldCheck className="w-6 h-6 shrink-0" />
           <div>
             <h4 className="font-semibold text-xs sm:text-sm">
-              Dictamen: {movimiento.aprobado === null ? 'No integrado' : movimiento.aprobado === 1 ? 'Aprobado (aprobado = 1)' : movimiento.aprobado === 2 ? 'Rechazado (aprobado = 2)' : 'Pendiente (aprobado = 0)'}
+              Dictamen: {movimiento.aprobado === null ? 'No integrado' : movimiento.aprobado === 1 ? 'Aprobado (aprobado = 1)' : movimiento.aprobado === 4 ? 'Rechazado (aprobado = 4)' : movimiento.aprobado === 0 ? 'Pendiente (aprobado = 0)' : `Otro estado (aprobado = ${movimiento.aprobado})`}
             </h4>
             <p className="text-xs opacity-90">
               {movimiento.aprobado === 1 &&
                 `Dictaminado por ${movimiento.nvAprobadoPor || 'Responsable no especificado'} el ${movimiento.dtAprobado || movimiento.fechaHora}.`}
-              {movimiento.aprobado === 2 &&
+              {movimiento.aprobado === 4 &&
                 `Rechazado por ${movimiento.nvAprobadoPor || 'Responsable no especificado'}.`}
               {movimiento.aprobado === null &&
                 'La integración del campo de aprobación está pendiente.'}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
   ClipboardList,
@@ -76,16 +77,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <>
       {/* Mobile Backdrop */}
-      {mobileOpen && (
-        <div
-          onClick={onCloseMobile}
-          className="fixed inset-0 z-40 bg-slate-950/60 lg:hidden backdrop-blur-xs"
-        />
-      )}
+      <AnimatePresence>
+        {mobileOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={onCloseMobile}
+            className="fixed inset-0 z-40 bg-slate-950/60 lg:hidden backdrop-blur-xs"
+          />
+        )}
+      </AnimatePresence>
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed lg:sticky top-0 left-0 z-40 h-screen transition-all duration-300 ease-in-out bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800 shadow-xl ${
+        className={`fixed lg:sticky top-0 left-0 z-40 h-screen transition-[width,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800 shadow-xl ${
           mobileOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0'
         } ${collapsed ? 'lg:w-20' : 'lg:w-64'}`}
       >
@@ -125,29 +132,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
               to={item.to}
               onClick={onCloseMobile}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all relative group ${
+                `flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-colors duration-200 relative group ${
                   isActive
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                    ? 'text-white'
                     : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/80'
                 }`
               }
               title={collapsed ? item.label : undefined}
             >
-              {item.icon}
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <motion.span
+                      layoutId="sidebar-active-pill"
+                      className="absolute inset-0 rounded-xl bg-blue-600 shadow-md shadow-blue-600/30"
+                      transition={{ type: 'spring', stiffness: 420, damping: 36 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-3 w-full">
+                    {item.icon}
 
-              {(!collapsed || mobileOpen) && (
-                <span className="truncate flex-1">{item.label}</span>
-              )}
+                    {(!collapsed || mobileOpen) && (
+                      <span className="truncate flex-1">{item.label}</span>
+                    )}
 
-              {/* Badge for pending approvals */}
-              {item.badge !== undefined && (
-                <span
-                  className={`inline-flex items-center justify-center font-bold font-mono text-[11px] rounded-full px-2 py-0.5 shadow-xs ${
-                    item.badgeColor || 'bg-blue-500 text-white'
-                  } ${collapsed && !mobileOpen ? 'absolute top-1.5 right-1.5 px-1.5 py-0.2' : ''}`}
-                >
-                  {item.badge}
-                </span>
+                    {/* Badge for pending approvals */}
+                    {item.badge !== undefined && (
+                      <span
+                        className={`inline-flex items-center justify-center font-bold font-mono text-[11px] rounded-full px-2 py-0.5 shadow-xs ${
+                          item.badgeColor || 'bg-blue-500 text-white'
+                        } ${collapsed && !mobileOpen ? 'absolute -top-1 -right-1 px-1.5' : ''}`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </span>
+                </>
               )}
             </NavLink>
           ))}

@@ -56,11 +56,11 @@ export const Modal: React.FC<ModalProps> = ({
           {/* Modal Container */}
           <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
             <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              initial={{ scale: 0.96, opacity: 0, y: 16 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-              className={`relative transform overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-left shadow-2xl transition-all sm:my-8 w-full ${widthClass}`}
+              exit={{ scale: 0.97, opacity: 0, y: 8 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 32, mass: 0.8 }}
+              className={`relative transform overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-left shadow-2xl sm:my-8 w-full ${widthClass}`}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}

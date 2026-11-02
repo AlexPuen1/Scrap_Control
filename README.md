@@ -47,10 +47,13 @@ La aplicación obtiene información mediante un servicio corporativo. Algunas pa
 
 - **Pendiente:** aún no se ha registrado un dictamen (`0`).
 - **Aprobado:** se registró aprobación (`1`).
-- **Rechazado:** se registró rechazo (`2`).
+- **Procesado:** movimiento procesado por el software correspondiente (`2`).
+- **Rechazado:** se registró rechazo (`4`).
 - **Sin dictamen:** el registro no tiene un valor asignado.
 
 La aplicación permite registrar aprobación o rechazo en movimientos pendientes. En una operación por grupo, cada movimiento se procesa por separado: algunos pueden guardarse y otros fallar. La pantalla informa los que no se completaron para que puedan revisarse.
+
+Al rechazar movimientos Scrap, la aplicación solicita un comentario y lo muestra en la tabla de Movimientos durante la sesión actual. El comentario no se envía al backend ni se guarda en SQL o almacenamiento local; desaparece al recargar la aplicación.
 
 ## Alcance y límites importantes
 

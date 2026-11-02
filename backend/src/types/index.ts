@@ -11,7 +11,7 @@ export interface MovimientoDB {
   EmpleadoId: string | null;
   Empleado: string | null;
   procesado?: number | null;
-  aprobado: number | null; // 0: Pendiente, 1: Aprobado, 2: Rechazado
+  aprobado: number | null; // 0: Pendiente, 1: Aprobado, 2: Procesado, 4: Rechazado
   RazonId: number | null;
   DescripcionRazon?: string | null;
   centro_costo: string | null;
@@ -25,10 +25,12 @@ export interface MovimientoDB {
 export interface MovimientoDetalleDTO extends MovimientoDB {
   MovimientoTipoNombre?: string;
   LineaId?: number | null;
+  LineaNombre?: string | null;
 }
 
 export interface ResumenScrapLineaDB {
   lineaId: number | null;
+  lineaNombre: string | null;
   movimientos: number;
   piezasScrap: number;
 }

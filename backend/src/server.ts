@@ -8,6 +8,7 @@ import { getHealth } from './controllers/healthController.js';
 dotenv.config();
 
 const app = express();
+app.disable('x-powered-by');
 const PORT = Number(process.env.PORT ?? 3001);
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
   throw new Error('PORT must be an integer between 1 and 65535');
@@ -19,16 +20,23 @@ const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http:
   .filter(Boolean);
 
 // Middlewares
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 app.use(cors({
   origin: allowedOrigins,
   methods: ['GET', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 
 // Logging middleware
 app.use((req, _res, next) => {
-  console.log(`[API] ${req.method} ${req.url}`);
+  console.log(`[API] ${req.method} ${req.path}`);
   next();
 });
 

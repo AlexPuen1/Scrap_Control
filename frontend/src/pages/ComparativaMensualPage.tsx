@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
+import { ChartExplanation } from '../components/common/ChartExplanation';
 import { useScrap } from '../context/ScrapContext';
 import { ScrapService } from '../services/scrapService';
 import type { ComparativaMensual, ComparativaMensualDato } from '../types';
@@ -20,26 +21,30 @@ type GraficaKey = ComparativaMensualDato['grafica'];
 type PeriodoKey = ComparativaMensualDato['periodo'];
 type PuntoComparacion = { categoria: string; actual: number; anterior: number };
 
-const GRAFICAS: { key: GraficaKey; titulo: string; descripcion: string }[] = [
+const GRAFICAS: { key: GraficaKey; titulo: string; descripcion: string; explicacion: string }[] = [
   {
     key: 'tendencia',
     titulo: 'Tendencia diaria de Scrap',
     descripcion: 'Piezas tipo Scrap por día; se compara el día del mes, no fechas consecutivas.',
+    explicacion: 'Cada grupo de barras representa un día del mes y muestra las piezas Scrap registradas. Se comparan días con el mismo número (por ejemplo, día 5 contra día 5); los meses pueden tener distinta cantidad de días.',
   },
   {
     key: 'certificacion',
     titulo: 'Piezas por certificación',
     descripcion: 'Cantidad de piezas agrupadas por CertificacionId.',
+    explicacion: 'Cada grupo corresponde al número de certificación y suma piezas de todos los tipos de movimiento. Las barras grises son del mes anterior y las azules del seleccionado.',
   },
   {
     key: 'razon',
     titulo: 'Piezas por razón',
     descripcion: 'Piezas tipo Scrap agrupadas por RazonId; “Sin razón” se conserva como categoría.',
+    explicacion: 'Cada grupo muestra cuántas piezas Scrap se asociaron a una razón. Compara las barras grises (mes anterior) y azules (mes seleccionado); «Sin razón» identifica registros sin razón asignada.',
   },
   {
     key: 'linea',
     titulo: 'Fallas por línea',
-    descripcion: 'Cantidad de piezas Scrap agrupada por LineaId.',
+    descripcion: 'Cantidad de piezas Scrap agrupada por nombre y número de línea.',
+    explicacion: 'Cada grupo representa el identificador de línea y suma piezas de movimientos tipo Scrap. Las barras grises corresponden al mes anterior y las azules al seleccionado; los datos no explican por sí mismos la causa de la diferencia.',
   },
 ];
 
@@ -225,7 +230,17 @@ export const ComparativaMensualPage: React.FC = () => {
       )}
 
       {movimientosCargando && <p role="status" className="text-sm text-slate-500">Determinando el periodo más reciente…</p>}
-      {cargando && <p role="status" className="text-sm text-slate-500">Consultando ambos meses en SQL Server…</p>}
+      {cargando && (
+        <div role="status" className="space-y-3">
+          <p className="text-sm text-slate-500">Consultando ambos meses en SQL Server…</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="skeleton h-28 w-full" />
+            ))}
+          </div>
+          <div className="skeleton h-64 w-full" />
+        </div>
+      )}
 
       {reporte && !cargando && !hayDatos && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-5 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
@@ -342,6 +357,7 @@ export const ComparativaMensualPage: React.FC = () => {
                       </ResponsiveContainer>
                     </div>
                   )}
+                  <ChartExplanation>{grafica.explicacion}</ChartExplanation>
 
                   <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">
                     Comparación: {periodosPresentacion(reporte)}.

@@ -75,11 +75,23 @@ export const COLORES_ESTATUS: Record<EstatusMovimiento, { bg: string; text: stri
     border: 'border-emerald-300 dark:border-emerald-700/50',
     badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-700/60',
   },
+  Procesado: {
+    bg: 'bg-blue-50 dark:bg-blue-950/40',
+    text: 'text-blue-700 dark:text-blue-400',
+    border: 'border-blue-300 dark:border-blue-700/50',
+    badge: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 border border-blue-300/60 dark:border-blue-700/60',
+  },
   Rechazado: {
     bg: 'bg-rose-50 dark:bg-rose-950/40',
     text: 'text-rose-700 dark:text-rose-400',
     border: 'border-rose-300 dark:border-rose-700/50',
     badge: 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300 border border-rose-300/60 dark:border-rose-700/60',
+  },
+  'Otro estado': {
+    bg: 'bg-slate-50 dark:bg-slate-950/40',
+    text: 'text-slate-700 dark:text-slate-400',
+    border: 'border-slate-300 dark:border-slate-700',
+    badge: 'bg-slate-100 text-slate-700 dark:bg-slate-900/50 dark:text-slate-300 border border-slate-300/60 dark:border-slate-700/60',
   },
   'Sin dictamen': {
     bg: 'bg-slate-50 dark:bg-slate-950/40',

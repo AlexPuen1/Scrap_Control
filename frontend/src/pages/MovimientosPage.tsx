@@ -32,6 +32,7 @@ export const MovimientosPage: React.FC = () => {
 
   // Estados de filtros y búsqueda
   const [busqueda, setBusqueda] = useState('');
+  const [filtroSerial, setFiltroSerial] = useState('');
   const [filtroEstatus, setFiltroEstatus] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   const [filtroRazon, setFiltroRazon] = useState('');
@@ -57,13 +58,15 @@ export const MovimientosPage: React.FC = () => {
         m.credencial.toLowerCase().includes(q) ||
         Boolean(m.descripcionRazon?.toLowerCase().includes(q));
 
+      const coincideSerial = filtroSerial.trim() === ''
+        || m.serial.toLocaleLowerCase().includes(filtroSerial.trim().toLocaleLowerCase());
       const coincideEstatus = filtroEstatus === '' || m.estatus === filtroEstatus;
       const coincideTipo = filtroTipo === '' || m.movimientoTipo === filtroTipo;
       const coincideRazon = filtroRazon === '' || m.razonId?.toString() === filtroRazon;
 
-      return coincideBusqueda && coincideEstatus && coincideTipo && coincideRazon;
+      return coincideBusqueda && coincideSerial && coincideEstatus && coincideTipo && coincideRazon;
     });
-  }, [movimientos, busqueda, filtroEstatus, filtroTipo, filtroRazon]);
+  }, [movimientos, busqueda, filtroSerial, filtroEstatus, filtroTipo, filtroRazon]);
 
   // Ordenar resultados
   const movimientosOrdenados = useMemo(() => {
@@ -104,6 +107,7 @@ export const MovimientosPage: React.FC = () => {
 
   const limpiarFiltros = () => {
     setBusqueda('');
+    setFiltroSerial('');
     setFiltroEstatus('');
     setFiltroTipo('');
     setFiltroRazon('');
@@ -168,7 +172,18 @@ export const MovimientosPage: React.FC = () => {
           </div>
 
           {/* Filtros Dropdown */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <input
+              type="search"
+              aria-label="Filtrar por serial"
+              value={filtroSerial}
+              onChange={(e) => {
+                setFiltroSerial(e.target.value);
+                setPaginaActual(1);
+              }}
+              placeholder="Filtrar por serial"
+              className="min-w-0 px-2.5 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
             {/* Filtro Estatus / Aprobado */}
             <select
               value={filtroEstatus}
@@ -181,7 +196,7 @@ export const MovimientosPage: React.FC = () => {
               <option value="">Estado Aprobación</option>
               <option value="Pendiente">Pendiente (aprobado = 0)</option>
               <option value="Aprobado">Aprobado (aprobado = 1)</option>
-              <option value="Rechazado">Rechazado (aprobado = 2)</option>
+              <option value="Rechazado">Rechazado (aprobado = 4)</option>
             </select>
 
             {/* Filtro Tipo de Movimiento */}
@@ -277,6 +292,7 @@ export const MovimientosPage: React.FC = () => {
                 </th>
                 <th className="w-[7%] px-2 py-3">Almacén</th>
                 <th className="w-[7%] px-2 py-3">Línea</th>
+                <th className="w-[7%] px-2 py-3">Procesado</th>
                 <th
                   onClick={() => alternarOrden('estatus')}
                   className="w-[9%] px-2 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -292,12 +308,20 @@ export const MovimientosPage: React.FC = () => {
 
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal">
               {movimientosCargando ? (
-                <tr><td colSpan={10} className="px-4 py-10 text-center text-slate-500">Cargando movimientos de SQL Server…</td></tr>
+                Array.from({ length: 8 }, (_, fila) => (
+                  <tr key={`skeleton-${fila}`} aria-hidden="true">
+                    {Array.from({ length: 11 }, (_, columna) => (
+                      <td key={columna} className="px-2 py-3.5">
+                        <div className="skeleton h-3.5 w-full" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
               ) : errorMovimientos ? (
-                <tr><td colSpan={10} className="px-4 py-10 text-center text-rose-600">No se pudieron leer los registros de la base de datos.</td></tr>
+                <tr><td colSpan={11} className="px-4 py-10 text-center text-rose-600">No se pudieron leer los registros de la base de datos.</td></tr>
               ) : movimientosPaginados.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-10 text-center text-slate-500">
                     No se encontraron movimientos registrados en dbo.Movimientos con los filtros aplicados.
                   </td>
                 </tr>
@@ -369,9 +393,24 @@ export const MovimientosPage: React.FC = () => {
 
                     {/* Línea relacionada a través de CertificacionId */}
                     <td className="px-2 py-3 text-slate-500 dark:text-slate-400">
-                      <span className="block truncate" title={mov.linea || 'Sin línea asignada'}>
-                        {mov.linea || 'Sin línea asignada'}
-                      </span>
+                      <div title={mov.linea || 'Sin línea asignada'}>
+                        <span className="block truncate font-semibold text-slate-800 dark:text-slate-200">
+                          {mov.datosDB?.LineaNombre || mov.linea || 'Sin línea asignada'}
+                        </span>
+                        {mov.datosDB?.LineaId != null && (
+                          <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">
+                            Línea {mov.datosDB.LineaId}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Esta columna refleja aprobado; procesado es un campo independiente administrado por otro software. */}
+                    <td
+                      className="px-2 py-3 font-mono text-center text-slate-600 dark:text-slate-300"
+                      title="Valor de dbo.Movimientos.aprobado: 1 aprobado, 2 procesado, 4 rechazado"
+                    >
+                      {mov.aprobado ?? '—'}
                     </td>
 
                     {/* Estatus / Aprobado */}
@@ -380,6 +419,14 @@ export const MovimientosPage: React.FC = () => {
                       {mov.nvAprobadoPor && (
                         <div className="text-[10px] text-slate-400 truncate max-w-[110px] mt-0.5">
                           {mov.nvAprobadoPor}
+                        </div>
+                      )}
+                      {mov.comentarioRechazo && (
+                        <div
+                          className="mt-1 max-w-[140px] truncate text-[10px] text-rose-700 dark:text-rose-300"
+                          title={mov.comentarioRechazo}
+                        >
+                          Comentario: {mov.comentarioRechazo}
                         </div>
                       )}
                     </td>
