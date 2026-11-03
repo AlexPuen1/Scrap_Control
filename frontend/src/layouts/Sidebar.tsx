@@ -5,12 +5,11 @@ import {
   LayoutDashboard,
   ClipboardList,
   CheckCircle,
-  FolderKanban,
   FileBarChart,
-  Settings,
   ChevronLeft,
   ChevronRight,
   Factory,
+  Search,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
 import { useDemoSession } from '../context/demoSession';
@@ -43,6 +42,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: <ClipboardList className="w-5 h-5 shrink-0" />,
     },
     {
+      to: '/filtros',
+      label: 'Filtros paso a paso',
+      icon: <Search className="w-5 h-5 shrink-0" />,
+    },
+    {
       to: '/aprobaciones',
       label: 'Aprobaciones',
       icon: <CheckCircle className="w-5 h-5 shrink-0" />,
@@ -50,34 +54,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-amber-500 text-white',
     },
     {
-      to: '/motivos',
-      label: 'Catálogo Motivos',
-      icon: <FolderKanban className="w-5 h-5 shrink-0" />,
-    },
-    {
       to: '/fallas-por-linea',
       label: 'Fallas por línea',
       icon: <Factory className="w-5 h-5 shrink-0" />,
-    },
-    {
-      to: '/reportes',
-      label: 'Reportes y Métricas',
-      icon: <FileBarChart className="w-5 h-5 shrink-0" />,
     },
     {
       to: '/comparativa-mensual',
       label: 'Comparación mensual',
       icon: <FileBarChart className="w-5 h-5 shrink-0" />,
     },
-    {
-      to: '/configuracion',
-      label: 'Configuración',
-      icon: <Settings className="w-5 h-5 shrink-0" />,
-    },
   ];
   const navItemsVisibles = usuario?.rol === 'Administrador'
     ? navItems
-    : navItems.filter((item) => ['/dashboard', '/movimientos', '/aprobaciones'].includes(item.to));
+    : navItems.filter((item) => ['/movimientos', '/aprobaciones'].includes(item.to));
 
   return (
     <>

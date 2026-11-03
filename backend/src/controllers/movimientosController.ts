@@ -12,6 +12,27 @@ function responderErrorInterno(res: Response, contexto: string, mensaje: string,
 export async function getMovimientos(req: Request, res: Response) {
   const fechaInicio = typeof req.query.fechaInicio === 'string' ? req.query.fechaInicio : undefined;
   const fechaFin = typeof req.query.fechaFin === 'string' ? req.query.fechaFin : undefined;
+  const filtrosNumericos = ['tipoId', 'razonId', 'certificacionId', 'lineaId'] as const;
+  const valorNumericoInvalido = filtrosNumericos.some((campo) => {
+    const valor = req.query[campo];
+    if (campo === 'razonId' && valor === 'null') return false;
+    return valor !== undefined && (
+      typeof valor !== 'string'
+      || !/^[1-9]\d*$/.test(valor)
+      || !Number.isSafeInteger(Number(valor))
+    );
+  });
+  const aprobado = req.query.aprobado;
+  const aprobadoInvalido = aprobado !== undefined
+    && (typeof aprobado !== 'string' || !['0', '1', '2', '4', 'null'].includes(aprobado));
+  const busqueda = req.query.busqueda;
+  const almacen = req.query.almacen;
+  const textoInvalido = (busqueda !== undefined && (typeof busqueda !== 'string' || busqueda.length > 200))
+    || (almacen !== undefined && (typeof almacen !== 'string' || almacen.length > 50));
+  if (valorNumericoInvalido || aprobadoInvalido || textoInvalido) {
+    res.status(400).json({ exitoso: false, mensaje: 'Uno o más filtros no son válidos.' });
+    return;
+  }
   const formatoFechaValido = (fecha: string) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return false;
     const parsed = new Date(`${fecha}T00:00:00.000Z`);
@@ -30,10 +51,13 @@ export async function getMovimientos(req: Request, res: Response) {
 
   try {
     const filtros = {
-      tipoId: req.query.tipoId as string | undefined,
-      aprobado: req.query.aprobado as string | undefined,
-      razonId: req.query.razonId as string | undefined,
-      busqueda: req.query.busqueda as string | undefined,
+      tipoId: typeof req.query.tipoId === 'string' ? req.query.tipoId : undefined,
+      aprobado: typeof aprobado === 'string' ? aprobado : undefined,
+      razonId: typeof req.query.razonId === 'string' ? req.query.razonId : undefined,
+      certificacionId: typeof req.query.certificacionId === 'string' ? req.query.certificacionId : undefined,
+      lineaId: typeof req.query.lineaId === 'string' ? req.query.lineaId : undefined,
+      almacen: typeof almacen === 'string' ? almacen : undefined,
+      busqueda: typeof busqueda === 'string' ? busqueda : undefined,
       fechaInicio,
       fechaFin,
     };

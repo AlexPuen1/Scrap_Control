@@ -2,14 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertOctagon,
   CalendarDays,
-  Clock,
   CheckCircle2,
-  XCircle,
   PlusCircle,
   Download,
   Flame,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ResponsiveContainer,
@@ -26,7 +23,6 @@ import {
 } from 'recharts';
 import { useScrap } from '../context/ScrapContext';
 import { useDemoSession } from '../context/demoSession';
-import { StatCard } from '../components/common/StatCard';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { ChartExplanation } from '../components/common/ChartExplanation';
@@ -70,7 +66,6 @@ function obtenerRangoUltimoMes(movimientos: Movimiento[]) {
 export const DashboardPage: React.FC = () => {
   const { movimientos, movimientosCargando, errorMovimientos, recargarMovimientos, turnoActivo } = useScrap();
   const { usuario } = useDemoSession();
-  const navigate = useNavigate();
   const [fechaHoy, setFechaHoy] = useState(() => formatearFechaLocal(new Date()));
   const [fechaInicio, setFechaInicio] = useState(obtenerInicioMesAnterior);
   const [fechaFin, setFechaFin] = useState(fechaHoy);
@@ -260,12 +255,6 @@ export const DashboardPage: React.FC = () => {
     ? `${formatearNumero(aprobacionesPeriodo.total)} movimientos con aprobado = 1 ${modoAprobaciones === 'mes' ? `durante ${etiquetaPeriodo}` : 'en toda la tabla'}, agrupados en ${formatearNumero(aprobacionesPorResponsable.length)} nombres.`
     : `Consultando aprobaciones ${modoAprobaciones === 'mes' ? `durante ${etiquetaPeriodo}` : 'de toda la tabla'}.`;
 
-  const scrapPiezasPeriodo = useMemo(
-    () => movimientosDelPeriodo
-      .filter((movimiento) => movimiento.movimientoTipoId === 1)
-      .reduce((total, movimiento) => total + movimiento.cantidad, 0),
-    [movimientosDelPeriodo],
-  );
   const pendientesPeriodo = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 0).length;
   const aprobadosPeriodo = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 1).length;
   const rechazadosPeriodo = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 4).length;
@@ -429,61 +418,6 @@ export const DashboardPage: React.FC = () => {
           ))}
         </motion.section>
       )}
-
-      {/* Tarjetas Principales de KPIs (Power BI & MES Style) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          titulo={`Piezas Scrap (${etiquetaPeriodo})`}
-          valor={`${formatearNumero(scrapPiezasPeriodo)} Pzas`}
-          subvalor="El costo no se calcula: no existe en los campos integrados."
-          icono={<AlertOctagon className="w-6 h-6" />}
-          colorAccent="rose"
-          delay={0}
-        />
-
-        <StatCard
-          titulo="Pendiente de Aprobar"
-          valor={`${pendientesPeriodo} Folios`}
-          subvalor="Conteo de pendientes dentro del periodo"
-          icono={<Clock className="w-6 h-6" />}
-          variacion={{
-            valor: 'En el periodo',
-            esPositiva: pendientesPeriodo === 0,
-            etiqueta: 'Dictamen disponible',
-          }}
-          colorAccent="amber"
-          delay={0.08}
-          onClick={() => navigate('/aprobaciones')}
-        />
-
-        <StatCard
-          titulo="Movimientos aprobados"
-          valor={`${aprobadosPeriodo} Folios`}
-          subvalor="Dictámenes aprobados dentro del periodo"
-          icono={<CheckCircle2 className="w-6 h-6" />}
-          variacion={{
-            valor: 'En el periodo',
-            esPositiva: true,
-            etiqueta: 'Estado confirmado',
-          }}
-          colorAccent="emerald"
-          delay={0.16}
-        />
-
-        <StatCard
-          titulo="Movimientos rechazados"
-          valor={`${rechazadosPeriodo} Folios`}
-          subvalor="Dictámenes rechazados dentro del periodo"
-          icono={<XCircle className="w-6 h-6" />}
-          variacion={{
-            valor: 'En el periodo',
-            esPositiva: true,
-            etiqueta: 'Estado confirmado',
-          }}
-          colorAccent="blue"
-          delay={0.24}
-        />
-      </div>
 
       {/* Tendencia de Scrap a lo ancho del dashboard */}
       <div className="grid grid-cols-1 gap-6">

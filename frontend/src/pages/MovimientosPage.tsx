@@ -1,11 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search,
   ArrowUpDown,
   Eye,
   FileSpreadsheet,
-  RotateCcw,
   Database,
   Tag,
 } from 'lucide-react';
@@ -13,29 +11,32 @@ import { useScrap } from '../context/ScrapContext';
 import { Badge } from '../components/common/Badge';
 import { Pagination } from '../components/common/Pagination';
 import { descargarCSV } from '../utils/formatters';
-import { CATEGORIAS_MOTIVOS } from '../constants';
+import { MovementFilters, type FiltrosMovimientoUI } from '../components/common/MovementFilters';
 
 type CampoOrden = 'id' | 'fecha' | 'matnr' | 'cantidad' | 'estatus' | 'linea' | 'serial' | 'razonId';
 
 export const MovimientosPage: React.FC = () => {
   const { movimientos, movimientosCargando, errorMovimientos, recargarMovimientos } = useScrap();
   const navigate = useNavigate();
-  const razonesDisponibles = useMemo(() => {
-    const razones = new Map<number, string>();
-    movimientos.forEach((movimiento) => {
-      if (movimiento.razonId !== null && movimiento.descripcionRazon) {
-        razones.set(movimiento.razonId, movimiento.descripcionRazon);
-      }
-    });
-    return [...razones.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  const [filtros, setFiltros] = useState<FiltrosMovimientoUI>({
+    busqueda: '',
+    estado: '',
+    tipo: '',
+    razon: '',
+    certificacion: '',
+    linea: '',
+    almacen: '',
+    fechaInicio: '',
+    fechaFin: '',
+  });
+  const rangoInicial = useMemo(() => {
+    const fechas = movimientos.map((movimiento) => movimiento.fecha).filter(Boolean).sort();
+    return { fechaInicio: fechas[0] ?? '', fechaFin: fechas.at(-1) ?? '' };
   }, [movimientos]);
-
-  // Estados de filtros y búsqueda
-  const [busqueda, setBusqueda] = useState('');
-  const [filtroSerial, setFiltroSerial] = useState('');
-  const [filtroEstatus, setFiltroEstatus] = useState('');
-  const [filtroTipo, setFiltroTipo] = useState('');
-  const [filtroRazon, setFiltroRazon] = useState('');
+  const filtrosActivos = useMemo(
+    () => !filtros.fechaInicio && !filtros.fechaFin ? { ...filtros, ...rangoInicial } : filtros,
+    [filtros, rangoInicial],
+  );
 
   // Ordenamiento
   const [ordenCampo, setOrdenCampo] = useState<CampoOrden>('id');
@@ -48,7 +49,7 @@ export const MovimientosPage: React.FC = () => {
   // Filtrado reactivo con soporte para campos de dbo.Movimientos
   const movimientosFiltrados = useMemo(() => {
     return movimientos.filter((m) => {
-      const q = busqueda.toLowerCase().trim();
+      const q = filtrosActivos.busqueda.toLowerCase().trim();
       const coincideBusqueda =
         q === '' ||
         m.id.toString().includes(q) ||
@@ -58,15 +59,21 @@ export const MovimientosPage: React.FC = () => {
         m.credencial.toLowerCase().includes(q) ||
         Boolean(m.descripcionRazon?.toLowerCase().includes(q));
 
-      const coincideSerial = filtroSerial.trim() === ''
-        || m.serial.toLocaleLowerCase().includes(filtroSerial.trim().toLocaleLowerCase());
-      const coincideEstatus = filtroEstatus === '' || m.estatus === filtroEstatus;
-      const coincideTipo = filtroTipo === '' || m.movimientoTipo === filtroTipo;
-      const coincideRazon = filtroRazon === '' || m.razonId?.toString() === filtroRazon;
+      const coincideEstatus = filtrosActivos.estado === ''
+        || (filtrosActivos.estado === 'null' ? m.aprobado === null : m.aprobado === Number(filtrosActivos.estado));
+      const coincideTipo = filtrosActivos.tipo === '' || String(m.movimientoTipoId) === filtrosActivos.tipo;
+      const coincideRazon = filtrosActivos.razon === ''
+        || (filtrosActivos.razon === 'null' ? m.razonId === null : String(m.razonId) === filtrosActivos.razon);
+      const coincideCertificacion = filtrosActivos.certificacion === '' || String(m.certificacionId) === filtrosActivos.certificacion;
+      const coincideLinea = filtrosActivos.linea === '' || String(m.datosDB?.LineaId ?? '') === filtrosActivos.linea;
+      const coincideAlmacen = filtrosActivos.almacen === '' || m.almacen === filtrosActivos.almacen;
+      const coincideFecha = (!filtrosActivos.fechaInicio || m.fecha >= filtrosActivos.fechaInicio)
+        && (!filtrosActivos.fechaFin || m.fecha <= filtrosActivos.fechaFin);
 
-      return coincideBusqueda && coincideSerial && coincideEstatus && coincideTipo && coincideRazon;
+      return coincideBusqueda && coincideEstatus && coincideTipo && coincideRazon
+        && coincideCertificacion && coincideLinea && coincideAlmacen && coincideFecha;
     });
-  }, [movimientos, busqueda, filtroSerial, filtroEstatus, filtroTipo, filtroRazon]);
+  }, [movimientos, filtrosActivos]);
 
   // Ordenar resultados
   const movimientosOrdenados = useMemo(() => {
@@ -106,11 +113,18 @@ export const MovimientosPage: React.FC = () => {
   };
 
   const limpiarFiltros = () => {
-    setBusqueda('');
-    setFiltroSerial('');
-    setFiltroEstatus('');
-    setFiltroTipo('');
-    setFiltroRazon('');
+    const fechas = movimientos.map((movimiento) => movimiento.fecha).filter(Boolean).sort();
+    setFiltros({
+      busqueda: '',
+      estado: '',
+      tipo: '',
+      razon: '',
+      certificacion: '',
+      linea: '',
+      almacen: '',
+      fechaInicio: fechas[0] ?? '',
+      fechaFin: fechas.at(-1) ?? '',
+    });
     setPaginaActual(1);
   };
 
@@ -146,8 +160,7 @@ export const MovimientosPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Barra de Filtros y Búsqueda */}
-      <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+      <div>
         {errorMovimientos && (
           <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
             <span>No fue posible cargar movimientos: {errorMovimientos}</span>
@@ -155,106 +168,26 @@ export const MovimientosPage: React.FC = () => {
           </div>
         )}
         {movimientosCargando && <p className="text-xs text-slate-500">Consultando dbo.Movimientos…</p>}
-        <div className="flex flex-col md:flex-row gap-3">
-          {/* Buscador General */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={busqueda}
-              onChange={(e) => {
-                setBusqueda(e.target.value);
-                setPaginaActual(1);
-              }}
-              placeholder="Buscar por ID, Serial, MATNR o credencial..."
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-
-          {/* Filtros Dropdown */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            <input
-              type="search"
-              aria-label="Filtrar por serial"
-              value={filtroSerial}
-              onChange={(e) => {
-                setFiltroSerial(e.target.value);
-                setPaginaActual(1);
-              }}
-              placeholder="Filtrar por serial"
-              className="min-w-0 px-2.5 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-            {/* Filtro Estatus / Aprobado */}
-            <select
-              value={filtroEstatus}
-              onChange={(e) => {
-                setFiltroEstatus(e.target.value);
-                setPaginaActual(1);
-              }}
-              className="px-2.5 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">Estado Aprobación</option>
-              <option value="Pendiente">Pendiente (aprobado = 0)</option>
-              <option value="Aprobado">Aprobado (aprobado = 1)</option>
-              <option value="Rechazado">Rechazado (aprobado = 4)</option>
-            </select>
-
-            {/* Filtro Tipo de Movimiento */}
-            <select
-              value={filtroTipo}
-              onChange={(e) => {
-                setFiltroTipo(e.target.value);
-                setPaginaActual(1);
-              }}
-              className="px-2.5 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">Tipo Movimiento</option>
-              {CATEGORIAS_MOTIVOS.map((cat, idx) => (
-                <option key={cat} value={cat}>
-                  {idx + 1} - {cat}
-                </option>
-              ))}
-            </select>
-
-            {/* Filtro Razón de Falla */}
-            <select
-              value={filtroRazon}
-              onChange={(e) => {
-                setFiltroRazon(e.target.value);
-                setPaginaActual(1);
-              }}
-              className="px-2.5 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">Todas las razones</option>
-              {razonesDisponibles.map(([idRazon, descripcion]) => (
-                <option key={idRazon} value={String(idRazon)}>
-                  {descripcion}
-                </option>
-              ))}
-            </select>
-
-            {/* Limpiar */}
-            <button
-              onClick={limpiarFiltros}
-              className="flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:white bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors"
-              title="Restablecer filtros"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Limpiar</span>
-            </button>
-          </div>
-        </div>
+        <MovementFilters
+          movimientos={movimientos}
+          filtros={filtrosActivos}
+          onChange={(nuevosFiltros) => {
+            setFiltros(nuevosFiltros);
+            setPaginaActual(1);
+          }}
+          onClear={limpiarFiltros}
+        />
       </div>
 
       {/* Tabla Principal de Movimientos */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
-        <div className="w-full">
-          <table className="w-full table-fixed text-left text-[11px]">
+        <div className="w-full overflow-x-auto">
+          <table className="w-full min-w-[1830px] table-auto text-left text-[11px]">
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase font-semibold text-[11px] tracking-wider border-b border-slate-200 dark:border-slate-800">
               <tr>
                 <th
                   onClick={() => alternarOrden('id')}
-                  className="w-[10%] px-2 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="min-w-[120px] px-2 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   <div className="flex items-center gap-1">
                     <span>ID / Serial</span>
@@ -263,7 +196,7 @@ export const MovimientosPage: React.FC = () => {
                 </th>
                 <th
                   onClick={() => alternarOrden('matnr')}
-                  className="w-[12%] px-2 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="min-w-[150px] px-2 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   <div className="flex items-center gap-1">
                     <span>MATNR (SAP)</span>
@@ -272,37 +205,39 @@ export const MovimientosPage: React.FC = () => {
                 </th>
                 <th
                   onClick={() => alternarOrden('fecha')}
-                  className="w-[11%] px-2 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="min-w-[135px] px-2 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   <div className="flex items-center gap-1">
                     <span>Fecha / Hora</span>
                     <ArrowUpDown className="w-3 h-3 text-slate-400" />
                   </div>
                 </th>
-                <th className="w-[14%] px-2 py-3">Tipo Movimiento</th>
-                <th className="w-[17%] px-2 py-3">Razón</th>
+                <th className="min-w-[170px] px-2 py-3">Tipo Movimiento</th>
+                <th className="min-w-[180px] px-2 py-3">Supervisor</th>
+                <th className="min-w-[240px] px-2 py-3">Razón</th>
                 <th
                   onClick={() => alternarOrden('cantidad')}
-                  className="w-[7%] px-2 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-right"
+                  className="min-w-[95px] px-2 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-right"
                 >
                   <div className="flex items-center justify-end gap-1">
                     <span>Cantidad</span>
                     <ArrowUpDown className="w-3 h-3 text-slate-400" />
                   </div>
                 </th>
-                <th className="w-[7%] px-2 py-3">Almacén</th>
-                <th className="w-[7%] px-2 py-3">Línea</th>
-                <th className="w-[7%] px-2 py-3">Procesado</th>
+                <th className="min-w-[125px] px-2 py-3">Almacén</th>
+                <th className="min-w-[140px] px-2 py-3">Línea</th>
+                <th className="min-w-[90px] px-2 py-3">Procesado</th>
                 <th
                   onClick={() => alternarOrden('estatus')}
-                  className="w-[9%] px-2 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="min-w-[150px] px-2 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   <div className="flex items-center gap-1">
                     <span>Aprobado</span>
                     <ArrowUpDown className="w-3 h-3 text-slate-400" />
                   </div>
                 </th>
-                <th className="w-[6%] px-2 py-3 text-center">Acciones</th>
+                <th className="min-w-[150px] px-2 py-3">Fecha aprobación</th>
+                <th className="min-w-[85px] px-2 py-3 text-center">Acciones</th>
               </tr>
             </thead>
 
@@ -310,7 +245,7 @@ export const MovimientosPage: React.FC = () => {
               {movimientosCargando ? (
                 Array.from({ length: 8 }, (_, fila) => (
                   <tr key={`skeleton-${fila}`} aria-hidden="true">
-                    {Array.from({ length: 11 }, (_, columna) => (
+                    {Array.from({ length: 13 }, (_, columna) => (
                       <td key={columna} className="px-2 py-3.5">
                         <div className="skeleton h-3.5 w-full" />
                       </td>
@@ -318,10 +253,10 @@ export const MovimientosPage: React.FC = () => {
                   </tr>
                 ))
               ) : errorMovimientos ? (
-                <tr><td colSpan={11} className="px-4 py-10 text-center text-rose-600">No se pudieron leer los registros de la base de datos.</td></tr>
+                <tr><td colSpan={13} className="px-4 py-10 text-center text-rose-600">No se pudieron leer los registros de la base de datos.</td></tr>
               ) : movimientosPaginados.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center text-slate-500">
+                  <td colSpan={13} className="px-4 py-10 text-center text-slate-500">
                     No se encontraron movimientos registrados en dbo.Movimientos con los filtros aplicados.
                   </td>
                 </tr>
@@ -346,11 +281,11 @@ export const MovimientosPage: React.FC = () => {
 
                     {/* MATNR y MATNR_FG */}
                     <td className="px-2 py-3">
-                      <div className="truncate font-mono font-semibold text-slate-800 dark:text-slate-200" title={mov.matnr}>
+                      <div className="break-all font-mono font-semibold text-slate-800 dark:text-slate-200" title={mov.matnr}>
                         {mov.matnr}
                       </div>
                       {mov.matnrFg && (
-                        <span className="inline-block text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">
+                        <span className="inline-block break-all text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">
                           FG: {mov.matnrFg}
                         </span>
                       )}
@@ -369,11 +304,17 @@ export const MovimientosPage: React.FC = () => {
                       </span>
                     </td>
 
+                    <td className="px-2 py-3 text-slate-700 dark:text-slate-200">
+                      <span className="block break-words" title={mov.empleado || 'Sin supervisor registrado'}>
+                        {mov.empleado || 'Sin supervisor registrado'}
+                      </span>
+                    </td>
+
                     {/* Descripción de razón */}
                     <td className="px-2 py-3">
-                      <div className="flex min-w-0 items-center gap-1">
+                      <div className="flex min-w-0 items-start gap-1">
                         <Tag className="w-3 h-3 text-slate-400 shrink-0" />
-                        <span className="truncate text-slate-500 dark:text-slate-400" title={mov.descripcionRazon}>
+                        <span className="break-words text-slate-500 dark:text-slate-400" title={mov.descripcionRazon}>
                           {mov.razonId === null ? 'Sin razón' : mov.descripcionRazon || 'Razón sin descripción disponible'}
                         </span>
                       </div>
@@ -386,7 +327,7 @@ export const MovimientosPage: React.FC = () => {
 
                     {/* Almacén */}
                     <td className="px-2 py-3 font-mono text-[10px] text-slate-600 dark:text-slate-300">
-                      <span className="block truncate rounded bg-slate-100 px-1 py-0.5 dark:bg-slate-800" title={mov.almacen}>
+                      <span className="block break-words rounded bg-slate-100 px-1 py-0.5 dark:bg-slate-800" title={mov.almacen}>
                         {mov.almacen}
                       </span>
                     </td>
@@ -394,7 +335,7 @@ export const MovimientosPage: React.FC = () => {
                     {/* Línea relacionada a través de CertificacionId */}
                     <td className="px-2 py-3 text-slate-500 dark:text-slate-400">
                       <div title={mov.linea || 'Sin línea asignada'}>
-                        <span className="block truncate font-semibold text-slate-800 dark:text-slate-200">
+                        <span className="block break-words font-semibold text-slate-800 dark:text-slate-200">
                           {mov.datosDB?.LineaNombre || mov.linea || 'Sin línea asignada'}
                         </span>
                         {mov.datosDB?.LineaId != null && (
@@ -417,18 +358,24 @@ export const MovimientosPage: React.FC = () => {
                     <td className="px-2 py-3">
                       <Badge estatus={mov.estatus} size="sm" />
                       {mov.nvAprobadoPor && (
-                        <div className="text-[10px] text-slate-400 truncate max-w-[110px] mt-0.5">
+                        <div className="mt-0.5 break-words text-[10px] text-slate-400">
                           {mov.nvAprobadoPor}
                         </div>
                       )}
                       {mov.comentarioRechazo && (
                         <div
-                          className="mt-1 max-w-[140px] truncate text-[10px] text-rose-700 dark:text-rose-300"
+                          className="mt-1 break-words text-[10px] text-rose-700 dark:text-rose-300"
                           title={mov.comentarioRechazo}
                         >
                           Comentario: {mov.comentarioRechazo}
                         </div>
                       )}
+                    </td>
+
+                    <td className="px-2 py-3 text-slate-600 dark:text-slate-300">
+                      {mov.dtAprobado
+                        ? <time dateTime={mov.dtAprobado}>{mov.dtAprobado.replace('T', ' ')}</time>
+                        : <span className="text-slate-400">Sin aprobar</span>}
                     </td>
 
                     {/* Acciones */}

@@ -16,13 +16,14 @@ Interfaz React 19 + TypeScript + Vite. El frontend consume únicamente las rutas
 
 | Ruta | Página | Datos y comportamiento |
 |---|---|---|
-| `/dashboard` | `DashboardPage` | Usa el conjunto predeterminado de movimientos; permite otro rango con consulta API, muestra periodo, indicadores, tendencias, exportación y gráficas por empleado/aprobador. Aprobaciones ofrece «Todas» o «Mes seleccionado»; el rango personalizado se mantiene local a esa pantalla. |
-| `/movimientos` | `MovimientosPage` | Tabla compacta de movimientos cargados, búsqueda, filtros locales por estado/tipo/razón, ordenamiento, paginación visual y exportación CSV. |
+| `/dashboard` | `DashboardPage` | Solo Administrador demo. Permite otro rango con consulta API, muestra tendencias, exportación y gráficas por empleado/aprobador. |
+| `/movimientos` | `MovimientosPage` | Tabla con supervisor reportante (valor de `dbo.Movimientos.Empleado`), fecha de emisión y fecha de aprobación; filtros guiados y búsqueda. |
 | `/movimientos/:id` | `MovimientoDetallePage` | Encuentra el registro dentro del contexto cargado y presenta ficha/razón. Carga opciones de razón del backend y permite persistir su selección. |
-| `/aprobaciones` | `AprobacionesPage` | Pendientes cargados; filtros por certificación, línea y fecha/hora; selección múltiple y dictamen individual o por lote. |
+| `/aprobaciones` | `AprobacionesPage` | Cuatro indicadores clicables para piezas Scrap, pendientes, aprobados y rechazados; cada tarjeta filtra el listado. Incluye la columna Supervisor con el valor `dbo.Movimientos.Empleado`, los mismos filtros progresivos que Movimientos, paginación de 10/25/50 filas y dictamen individual/múltiple para pendientes. |
 | `/fallas-por-linea` | `FallasPorLineaPage` | Solicita el agregado SQL independiente, su periodo y datos por línea; gráfica de barras horizontales, búsqueda y tabla. |
 | `/reportes` | `ReportesPage` | Filtra localmente el conjunto ya cargado, calcula resúmenes por certificación/MATNR y exporta CSV. |
-| `/comparativa-mensual` | `ComparativaMensualPage` | Compara el mes calendario elegido con el anterior y señala picos propios en cuatro métricas. |
+| `/comparativa-mensual` | `ComparativaMensualPage` | Solo Administrador demo. Compara el mes calendario elegido con el anterior y señala picos propios en cuatro métricas. |
+| `/filtros` | `FiltrosPage` | Solo Administrador demo. Inicia con el último mes disponible, permite combinar filtros y consulta al servidor solo al pulsar Buscar. |
 | `/motivos` | `MotivosPage` | Referencias y formularios locales; no modifica catálogos SQL. |
 | `/configuracion` | `ConfiguracionPage` | Valores visuales/locales; guardar muestra confirmación, no persiste configuración corporativa. |
 
@@ -34,6 +35,7 @@ La base de rutas se configura con `VITE_API_BASE_URL`; si no existe, es `/api`. 
 |---|---|---|
 | Carga compartida | `GET /api/movimientos` | Filas del periodo reciente calculado por el backend. |
 | Búsqueda Dashboard | `GET /api/movimientos?fechaInicio=...&fechaFin=...` | Fechas de UI son inclusivas; el cliente envía fin exclusivo (día posterior). |
+| Filtros paso a paso | `GET /api/movimientos` con fechas, tipo, estado, razón, certificación, línea, almacén y texto opcionales | Valida filtros en el backend, obtiene el intervalo y aplica criterios sobre las filas consultadas; el fin enviado es exclusivo. |
 | Aprobaciones Dashboard | `GET /api/movimientos/aprobaciones` con `fechaInicio` y `fechaFin` opcionales | Siempre cuenta filas con `aprobado = 1` y agrupa por `nvAprobadoPor`. Sin fechas muestra todas; con ambas fechas limita por `dtAprobado` al rango inclusivo de UI (fin exclusivo enviado). No filtra por tipo de movimiento. |
 | Fallas por línea | `GET /api/movimientos/fallas-por-linea` | Periodo reciente y agregado SQL por número y nombre de línea. |
 | Comparación mensual | `GET /api/movimientos/comparativa-mensual?mes=YYYY-MM` | Agrega el mes seleccionado y el anterior por tendencia diaria, certificación, razón y línea; independiente del conjunto compartido. |
@@ -45,11 +47,17 @@ El cliente comprueba `response.ok`, `exitoso` y que exista la estructura de dato
 
 ### Adaptación de fila
 
-`adaptarMovimiento()` mantiene la fila original bajo `datosDB`, deriva fecha/hora, etiqueta el estado y obtiene el nombre del tipo a partir del mapa `MOVIMIENTO_TIPOS_SSMS`. La API entrega `LineaNombre` y `LineaId`; si falta el nombre, la interfaz conserva una etiqueta de respaldo. La API no entrega nombre enriquecido del material, empleado, costos, historial ni unidad oficial; varios valores de presentación pueden estar vacíos, ser constantes o locales.
+`adaptarMovimiento()` mantiene la fila original bajo `datosDB`, deriva fecha/hora, etiqueta el estado y obtiene el nombre del tipo a partir del mapa `MOVIMIENTO_TIPOS_SSMS`. La API entrega `LineaNombre` y `LineaId`; si falta el nombre, la interfaz conserva una etiqueta de respaldo. La API devuelve el campo original `Empleado` de `dbo.Movimientos`, que la tabla presenta como Supervisor según la definición operativa solicitada. No se enriquece ese nombre desde otro catálogo; costos, historial y unidad oficial pueden estar vacíos, ser constantes o locales.
 
 ## Filtros y presentación
 
 - La lista de Movimientos se obtiene inicialmente con el último periodo de un mes anclado a `MAX(fecha_hora)`; las búsquedas y filtros de UI operan sobre esas filas.
+- Movimientos y Aprobaciones comparten el mismo panel de búsqueda. El periodo predeterminado refleja las fechas disponibles; la razón se habilita después de elegir tipo. Las fechas son controles de calendario y el panel se limita a registros cargados en el contexto.
+- Filtros paso a paso propone por defecto el mes calendario de la fecha disponible más reciente. Al pulsar Buscar envía los filtros opcionales a `GET /api/movimientos`; no carga resultados nuevos mientras se cambian opciones.
+- La fecha de aprobación mostrada en Movimientos proviene de `dbo.Movimientos.dtAprobado`; los pendientes muestran “Sin aprobar”.
+- Las tablas de Movimientos y Aprobaciones permiten desplazamiento horizontal y envuelven el texto largo en varias líneas para mostrar completos los valores, sin truncarlos con puntos suspensivos.
+- Dashboard, Comparación mensual y Filtros paso a paso son exclusivos de Administrador demo. Gerente y Superintendente tienen Movimientos y Aprobaciones. Las rutas restringidas también redirigen al intentar abrirlas directamente; esto sigue siendo navegación de interfaz, no permisos del backend.
+- Aprobar o denegar una fila abre directamente un diálogo de confirmación, sin la pantalla intermedia de revisión. Se conserva el nombre responsable editable y el comentario obligatorio al rechazar Scrap.
 - El Dashboard consulta otro intervalo al pulsar **Buscar**. El error y rango personalizado corresponden a esa página; no reemplaza la lista compartida para las otras pantallas.
 - La gráfica de aprobaciones consulta en forma independiente. «Todas las aprobaciones» no usa rango; «Mes seleccionado» se sincroniza con el periodo aplicado del Dashboard y filtra por `dtAprobado`, fecha real del dictamen.
 - Reportes no solicita al backend el rango filtrado: reduce en memoria el conjunto cargado por el contexto. Por tanto no puede mostrar fechas que quedaron fuera de ese conjunto.

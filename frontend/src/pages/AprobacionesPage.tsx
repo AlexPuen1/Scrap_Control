@@ -1,47 +1,51 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Boxes,
   Check,
+  CheckCircle2,
+  Clock,
   Database,
   FileCheck2,
-  Filter,
-  Search,
   Tag,
   X,
+  XCircle,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
 import { useDemoSession } from '../context/demoSession';
 import type { Movimiento } from '../types';
 import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
+import { Pagination } from '../components/common/Pagination';
+import { StatCard } from '../components/common/StatCard';
+import { MovementFilters, type FiltrosMovimientoUI } from '../components/common/MovementFilters';
 
 type Decision = 1 | 4;
-type Revision = { movimiento: Movimiento; decision: Decision };
-
-const valorDato = (valor: string | number | boolean | null | undefined) => {
-  if (valor === null || valor === undefined || valor === '') return 'No disponible';
-  if (typeof valor === 'boolean') return valor ? 'Sí' : 'No';
-  return String(valor);
-};
-
-const CampoDato: React.FC<{ etiqueta: string; valor: string | number | boolean | null | undefined; mono?: boolean }> = ({
-  etiqueta,
-  valor,
-  mono = false,
-}) => (
-  <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/70">
-    <span className="block text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{etiqueta}</span>
-    <span className={`mt-1 block break-words text-xs font-semibold text-slate-800 dark:text-slate-100 ${mono ? 'font-mono' : ''}`}>
-      {valorDato(valor)}
-    </span>
-  </div>
-);
+type DictamenPendiente = { movimiento: Movimiento; decision: Decision };
 
 export const AprobacionesPage: React.FC = () => {
   const { movimientos, aprobarMovimiento, dictaminarMovimientos, rechazarMovimiento } = useScrap();
   const { usuario } = useDemoSession();
-  const [filtroCertificacion, setFiltroCertificacion] = useState('');
-  const [busquedaSerial, setBusquedaSerial] = useState('');
-  const [busquedaFechaHora, setBusquedaFechaHora] = useState('');
+  const [filtros, setFiltros] = useState<FiltrosMovimientoUI>({
+    busqueda: '',
+    estado: '0',
+    tipo: '',
+    razon: '',
+    certificacion: '',
+    linea: '',
+    almacen: '',
+    fechaInicio: '',
+    fechaFin: '',
+  });
+  const rangoInicial = useMemo(() => {
+    const fechas = movimientos.map((movimiento) => movimiento.fecha).filter(Boolean).sort();
+    return { fechaInicio: fechas[0] ?? '', fechaFin: fechas.at(-1) ?? '' };
+  }, [movimientos]);
+  const filtrosActivos = useMemo(
+    () => !filtros.fechaInicio && !filtros.fechaFin ? { ...filtros, ...rangoInicial } : filtros,
+    [filtros, rangoInicial],
+  );
+  const [paginaActual, setPaginaActual] = useState(1);
+  const [elementosPorPagina, setElementosPorPagina] = useState(10);
   const [seleccionados, setSeleccionados] = useState<string[]>([]);
   const [modalDictamenMultiple, setModalDictamenMultiple] = useState(false);
   const [confirmacionFinalMultiple, setConfirmacionFinalMultiple] = useState(false);
@@ -51,34 +55,62 @@ export const AprobacionesPage: React.FC = () => {
   const [errorAprobacionMultiple, setErrorAprobacionMultiple] = useState<string | null>(null);
   const [idsFallidos, setIdsFallidos] = useState<string[]>([]);
   const [aprobacionMultipleEnviando, setAprobacionMultipleEnviando] = useState(false);
-  const [revision, setRevision] = useState<Revision | null>(null);
+  const [dictamenPendiente, setDictamenPendiente] = useState<DictamenPendiente | null>(null);
   const [nombreResponsable, setNombreResponsable] = useState('');
   const [comentarioRechazo, setComentarioRechazo] = useState('');
   const [dictamenEnviando, setDictamenEnviando] = useState(false);
   const [errorDictamen, setErrorDictamen] = useState<string | null>(null);
 
   const pendientes = movimientos.filter((movimiento) => {
-    const esPendiente = movimiento.aprobado === 0 || movimiento.estatus === 'Pendiente';
-    const coincideCertificacion = filtroCertificacion === ''
-      || String(movimiento.certificacionId) === filtroCertificacion;
-    const serial = movimiento.serial.toLocaleLowerCase();
-    const coincideSerial = busquedaSerial.trim() === ''
-      || serial.includes(busquedaSerial.trim().toLocaleLowerCase());
-    const fechaHora = (movimiento.fechaHora || `${movimiento.fecha} ${movimiento.hora}`)
-      .replace('T', ' ')
-      .toLocaleLowerCase();
-    const coincideFechaHora = busquedaFechaHora.trim() === ''
-      || fechaHora.includes(busquedaFechaHora.trim().replace('T', ' ').toLocaleLowerCase());
-    return esPendiente && coincideCertificacion && coincideSerial && coincideFechaHora;
+    const coincideEstado = filtrosActivos.estado === ''
+      || (filtrosActivos.estado === 'null' ? movimiento.aprobado === null : movimiento.aprobado === Number(filtrosActivos.estado));
+    const coincideTexto = !filtrosActivos.busqueda || [
+      movimiento.id,
+      movimiento.serial,
+      movimiento.matnr,
+      movimiento.matnrFg,
+      movimiento.credencial,
+    ].some((valor) => String(valor ?? '').toLocaleLowerCase().includes(filtrosActivos.busqueda.trim().toLocaleLowerCase()));
+    const coincideCertificacion = !filtrosActivos.certificacion || String(movimiento.certificacionId) === filtrosActivos.certificacion;
+    const coincideTipo = !filtrosActivos.tipo || String(movimiento.movimientoTipoId) === filtrosActivos.tipo;
+    const coincideRazon = !filtrosActivos.razon
+      || (filtrosActivos.razon === 'null' ? movimiento.razonId === null : String(movimiento.razonId) === filtrosActivos.razon);
+    const coincideLinea = !filtrosActivos.linea || String(movimiento.datosDB?.LineaId ?? '') === filtrosActivos.linea;
+    const coincideAlmacen = !filtrosActivos.almacen || movimiento.almacen === filtrosActivos.almacen;
+    const coincideFecha = (!filtrosActivos.fechaInicio || movimiento.fecha >= filtrosActivos.fechaInicio)
+      && (!filtrosActivos.fechaFin || movimiento.fecha <= filtrosActivos.fechaFin);
+    return coincideEstado && coincideTexto && coincideCertificacion && coincideTipo
+      && coincideRazon && coincideLinea && coincideAlmacen && coincideFecha;
   });
-  const idsPendientesVisibles = pendientes.map((movimiento) => movimiento.id);
-  const seleccionadosVisibles = seleccionados.filter((id) => idsPendientesVisibles.includes(id));
+  const idsPendientesFiltrados = pendientes
+    .filter((movimiento) => movimiento.aprobado === 0)
+    .map((movimiento) => movimiento.id);
+  const totalPaginas = Math.ceil(pendientes.length / elementosPorPagina);
+  const paginaSegura = Math.min(paginaActual, Math.max(totalPaginas, 1));
+  const pendientesPaginados = pendientes.slice(
+    (paginaSegura - 1) * elementosPorPagina,
+    paginaSegura * elementosPorPagina,
+  );
+  const pendientesVisiblesPaginados = pendientesPaginados.filter((movimiento) => movimiento.aprobado === 0);
+  const idsPendientesVisibles = pendientesVisiblesPaginados.map((movimiento) => movimiento.id);
+  const seleccionadosVisibles = seleccionados.filter((id) => idsPendientesFiltrados.includes(id));
   const todosVisiblesSeleccionados = idsPendientesVisibles.length > 0
     && idsPendientesVisibles.every((id) => seleccionados.includes(id));
   const rechazoMultipleIncluyeScrap = seleccionadosVisibles.some((id) =>
     movimientos.some((movimiento) => movimiento.id === id && movimiento.movimientoTipoId === 1),
   );
-  const requiereComentarioRechazo = revision?.decision === 4 && revision.movimiento.movimientoTipoId === 1;
+  const requiereComentarioRechazo = dictamenPendiente?.decision === 4 && dictamenPendiente.movimiento.movimientoTipoId === 1;
+  const fechaDesde = filtrosActivos.fechaInicio;
+  const fechaHasta = filtrosActivos.fechaFin;
+  const movimientosDelPeriodo = movimientos.filter((movimiento) =>
+    (!fechaDesde || movimiento.fecha >= fechaDesde) && (!fechaHasta || movimiento.fecha <= fechaHasta),
+  );
+  const totalPiezas = movimientosDelPeriodo
+    .filter((movimiento) => movimiento.movimientoTipoId === 1)
+    .reduce((total, movimiento) => total + movimiento.cantidad, 0);
+  const conteoPendientes = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 0).length;
+  const conteoAprobados = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 1).length;
+  const conteoRechazados = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 4).length;
 
   const alternarSeleccionTodos = (seleccionar: boolean) => {
     setSeleccionados((actuales) => {
@@ -91,6 +123,11 @@ export const AprobacionesPage: React.FC = () => {
     setSeleccionados((actuales) => seleccionar
       ? [...new Set([...actuales, id])]
       : actuales.filter((seleccionado) => seleccionado !== id));
+  };
+
+  const actualizarFiltros = (nuevosFiltros: FiltrosMovimientoUI) => {
+    setFiltros(nuevosFiltros);
+    setPaginaActual(1);
   };
 
   const prepararAprobacionMultiple = (event: React.FormEvent<HTMLFormElement>) => {
@@ -132,22 +169,22 @@ export const AprobacionesPage: React.FC = () => {
     }
   };
 
-  const abrirRevision = (movimiento: Movimiento, decision: Decision) => {
-    setRevision({ movimiento, decision });
+  const abrirConfirmacionDictamen = (movimiento: Movimiento, decision: Decision) => {
+    setDictamenPendiente({ movimiento, decision });
     setNombreResponsable(usuario?.nombre ?? '');
     setComentarioRechazo('');
     setErrorDictamen(null);
   };
 
-  const cerrarRevision = () => {
+  const cerrarConfirmacionDictamen = () => {
     if (dictamenEnviando) return;
-    setRevision(null);
+    setDictamenPendiente(null);
     setErrorDictamen(null);
   };
 
   const confirmarDictamen = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!revision) return;
+    if (!dictamenPendiente) return;
 
     const responsable = nombreResponsable.trim();
     if (!responsable) {
@@ -162,26 +199,18 @@ export const AprobacionesPage: React.FC = () => {
     setDictamenEnviando(true);
     setErrorDictamen(null);
     try {
-      if (revision.decision === 1) {
-        await aprobarMovimiento(revision.movimiento.id, responsable);
+      if (dictamenPendiente.decision === 1) {
+        await aprobarMovimiento(dictamenPendiente.movimiento.id, responsable);
       } else {
-        await rechazarMovimiento(revision.movimiento.id, responsable, comentarioRechazo);
+        await rechazarMovimiento(dictamenPendiente.movimiento.id, responsable, comentarioRechazo);
       }
-      setRevision(null);
+      setDictamenPendiente(null);
     } catch (error) {
       setErrorDictamen(error instanceof Error ? error.message : 'No se pudo guardar el dictamen.');
     } finally {
       setDictamenEnviando(false);
     }
   };
-
-  const movimientoRevision = revision?.movimiento;
-  const datosBase = movimientoRevision?.datosDB;
-  const razonRevision = movimientoRevision?.razonId === null
-    ? 'Sin razón'
-    : movimientoRevision?.razonId === undefined
-      ? 'No disponible'
-      : movimientoRevision.descripcionRazon || movimientoRevision.motivoEspecifico || 'Descripción no disponible';
 
   return (
     <div className="space-y-5">
@@ -192,7 +221,7 @@ export const AprobacionesPage: React.FC = () => {
           </h1>
           <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800 dark:border-amber-700 dark:bg-amber-900/60 dark:text-amber-300">
             <Database className="h-3 w-3" />
-            {pendientes.length} pendientes
+            {conteoPendientes} pendientes
           </span>
         </div>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 sm:text-sm">
@@ -204,52 +233,65 @@ export const AprobacionesPage: React.FC = () => {
         Los dictámenes se guardan en SOE y no se pueden deshacer desde esta aplicación. El login y los roles son de demostración, no verifican identidad ni permisos; el nombre que captures se guardará en <code>nvAprobadoPor</code>. Confirma que tienes autorización antes de continuar.
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center gap-2 text-xs">
-          <Filter className="h-4 w-4 text-slate-400" />
-          <label htmlFor="filtro-certificacion" className="font-semibold text-slate-700 dark:text-slate-300">
-            Certificación:
-          </label>
-          <select
-            id="filtro-certificacion"
-            value={filtroCertificacion}
-            onChange={(event) => setFiltroCertificacion(event.target.value)}
-            className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-          >
-            <option value="">Todas</option>
-            {[...new Set(movimientos.map((movimiento) => movimiento.certificacionId))].map((id) => (
-              <option key={id} value={String(id)}>Certificación {id}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex min-w-[200px] flex-1 items-center gap-2 text-xs sm:max-w-xs">
-          <Search className="h-4 w-4 shrink-0 text-slate-400" />
-          <label htmlFor="busqueda-serial-aprobaciones" className="sr-only">Buscar por serial</label>
-          <input
-            id="busqueda-serial-aprobaciones"
-            type="search"
-            value={busquedaSerial}
-            onChange={(event) => setBusquedaSerial(event.target.value)}
-            placeholder="Buscar por serial"
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-          />
-        </div>
-        <div className="flex min-w-[240px] flex-1 items-center gap-2 text-xs sm:max-w-md">
-          <Search className="h-4 w-4 shrink-0 text-slate-400" />
-          <label htmlFor="busqueda-fecha-hora" className="sr-only">Buscar por fecha y hora de emisión</label>
-          <input
-            id="busqueda-fecha-hora"
-            type="search"
-            value={busquedaFechaHora}
-            onChange={(event) => setBusquedaFechaHora(event.target.value)}
-            placeholder="Buscar fecha y hora (AAAA-MM-DD HH:mm)"
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-          />
-        </div>
-        <span className="ml-auto text-xs font-mono text-slate-500 dark:text-slate-400">
-          dbo.Movimientos
-        </span>
-      </div>
+      <section aria-label="Resumen de movimientos" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          titulo="Total de piezas Scrap"
+          valor={`${totalPiezas.toLocaleString('es-MX')} piezas`}
+          subvalor={`${fechaDesde || 'Todo el periodo'} a ${fechaHasta || 'hoy'} · Ver todos los estados`}
+          icono={<Boxes className="h-6 w-6" />}
+          colorAccent="rose"
+          active={filtrosActivos.estado === ''}
+          onClick={() => actualizarFiltros({ ...filtros, estado: '' })}
+        />
+        <StatCard
+          titulo="Pendientes"
+          valor={`${conteoPendientes} movimientos`}
+          subvalor="Toca para revisar lo que falta"
+          icono={<Clock className="h-6 w-6" />}
+          colorAccent="amber"
+          active={filtrosActivos.estado === '0'}
+          onClick={() => actualizarFiltros({ ...filtros, estado: '0' })}
+        />
+        <StatCard
+          titulo="Aprobados"
+          valor={`${conteoAprobados} movimientos`}
+          subvalor="Toca para ver los aprobados"
+          icono={<CheckCircle2 className="h-6 w-6" />}
+          colorAccent="emerald"
+          active={filtrosActivos.estado === '1'}
+          onClick={() => actualizarFiltros({ ...filtros, estado: '1' })}
+        />
+        <StatCard
+          titulo="Rechazados"
+          valor={`${conteoRechazados} movimientos`}
+          subvalor="Toca para ver los rechazados"
+          icono={<XCircle className="h-6 w-6" />}
+          colorAccent="blue"
+          active={filtrosActivos.estado === '4'}
+          onClick={() => actualizarFiltros({ ...filtros, estado: '4' })}
+        />
+      </section>
+
+      <MovementFilters
+        movimientos={movimientos}
+        filtros={filtrosActivos}
+        onChange={actualizarFiltros}
+        onClear={() => {
+          const fechas = movimientos.map((movimiento) => movimiento.fecha).filter(Boolean).sort();
+          setFiltros({
+            busqueda: '',
+            estado: '0',
+            tipo: '',
+            razon: '',
+            certificacion: '',
+            linea: '',
+            almacen: '',
+            fechaInicio: fechas[0] ?? '',
+            fechaFin: fechas.at(-1) ?? '',
+          });
+          setPaginaActual(1);
+        }}
+      />
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
@@ -257,11 +299,11 @@ export const AprobacionesPage: React.FC = () => {
             <input
               type="checkbox"
               checked={todosVisiblesSeleccionados}
-              disabled={pendientes.length === 0 || aprobacionMultipleEnviando}
+              disabled={pendientesVisiblesPaginados.length === 0 || aprobacionMultipleEnviando}
               onChange={(event) => alternarSeleccionTodos(event.target.checked)}
               className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
             />
-            Seleccionar todas las pendientes visibles ({pendientes.length})
+            Seleccionar pendientes en esta página ({pendientesVisiblesPaginados.length})
           </label>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -298,43 +340,44 @@ export const AprobacionesPage: React.FC = () => {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-xs">
+          <table className="w-full min-w-[1450px] table-auto text-left text-xs">
             <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400">
               <tr>
                 <th className="w-10 px-3 py-3">
                   <span className="sr-only">Seleccionar movimiento</span>
                 </th>
-                <th className="px-4 py-3">Folio / emisión</th>
-                <th className="px-4 py-3">Serial</th>
-                <th className="px-4 py-3">Componente</th>
-                <th className="px-4 py-3">Línea</th>
-                <th className="px-4 py-3">Razón</th>
-                <th className="px-4 py-3 text-right">Cantidad</th>
-                <th className="px-4 py-3 text-center">Dictamen</th>
+                <th className="min-w-[150px] px-4 py-3">Folio / emisión</th>
+                <th className="min-w-[150px] px-4 py-3">Serial</th>
+                <th className="min-w-[260px] px-4 py-3">Componente</th>
+                <th className="min-w-[180px] px-4 py-3">Supervisor</th>
+                <th className="min-w-[160px] px-4 py-3">Línea</th>
+                <th className="min-w-[240px] px-4 py-3">Razón</th>
+                <th className="min-w-[110px] px-4 py-3 text-right">Cantidad</th>
+                <th className="min-w-[230px] px-4 py-3 text-center">Dictamen</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {pendientes.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center">
+                  <td colSpan={9} className="px-4 py-12 text-center">
                     <div className="flex flex-col items-center gap-2 text-slate-400">
                       <FileCheck2 className="h-10 w-10 text-emerald-500/70" />
                       <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                        {busquedaFechaHora || filtroCertificacion || busquedaSerial
-                          ? 'No hay solicitudes que coincidan con los filtros.'
-                          : '¡Todo al día! No hay solicitudes pendientes.'}
+                        {filtrosActivos.estado === '0'
+                          ? '¡Todo al día! No hay movimientos pendientes con estos filtros.'
+                          : 'No encontramos movimientos con estos filtros.'}
                       </p>
                     </div>
                   </td>
                 </tr>
-              ) : pendientes.map((item) => (
+              ) : pendientesPaginados.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
                   <td className="px-3 py-3">
                     <input
                       type="checkbox"
                       aria-label={`Seleccionar movimiento ${item.id}`}
                       checked={seleccionados.includes(item.id)}
-                      disabled={aprobacionMultipleEnviando}
+                      disabled={item.aprobado !== 0 || aprobacionMultipleEnviando}
                       onChange={(event) => alternarSeleccionMovimiento(item.id, event.target.checked)}
                       className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
@@ -345,12 +388,15 @@ export const AprobacionesPage: React.FC = () => {
                       {(item.fechaHora || `${item.fecha} ${item.hora}`).replace('T', ' ')}
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-mono font-semibold text-slate-700 dark:text-slate-300">
+                  <td className="break-all px-4 py-3 font-mono font-semibold text-slate-700 dark:text-slate-300">
                     {item.serial || 'No disponible'}
                   </td>
-                  <td className="max-w-[260px] px-4 py-3">
-                    <div className="truncate font-mono font-bold text-slate-800 dark:text-slate-200" title={item.matnr}>{item.matnr}</div>
-                    <div className="truncate text-[11px] text-slate-500 dark:text-slate-400" title={item.descripcion}>{item.descripcion || item.serial}</div>
+                  <td className="break-words px-4 py-3">
+                    <div className="break-all font-mono font-bold text-slate-800 dark:text-slate-200" title={item.matnr}>{item.matnr}</div>
+                    <div className="break-words text-[11px] text-slate-500 dark:text-slate-400" title={item.descripcion}>{item.descripcion || item.serial}</div>
+                  </td>
+                  <td className="break-words px-4 py-3 text-slate-700 dark:text-slate-300">
+                    {item.empleado || 'Sin supervisor registrado'}
                   </td>
                   <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-300">
                     <div title={item.linea || 'Sin línea asignada'}>
@@ -364,10 +410,13 @@ export const AprobacionesPage: React.FC = () => {
                       )}
                     </div>
                   </td>
-                  <td className="max-w-[220px] px-4 py-3">
-                    <div className="flex items-center gap-1.5">
+                  <td className="break-words px-4 py-3">
+                    <div className="flex items-start gap-1.5">
                       <Tag className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-                      <span className="truncate text-slate-700 dark:text-slate-300" title={razonRevision}>
+                      <span
+                        className="break-words text-slate-700 dark:text-slate-300"
+                        title={item.razonId === null ? 'Sin razón' : item.descripcionRazon || item.motivoEspecifico || 'Descripción no disponible'}
+                      >
                         {item.razonId === null ? 'Sin razón' : item.descripcionRazon || item.motivoEspecifico || 'Descripción no disponible'}
                       </span>
                     </div>
@@ -377,34 +426,51 @@ export const AprobacionesPage: React.FC = () => {
                     {item.cantidad} {item.unidad}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex justify-center gap-2">
-                      <Button
-                        variant={seleccionados.includes(item.id) ? 'secondary' : 'success'}
-                        size="sm"
-                        className="min-w-[96px]"
-                        icon={<Check className="h-3.5 w-3.5" />}
-                        disabled={seleccionados.includes(item.id) || aprobacionMultipleEnviando}
-                        onClick={() => abrirRevision(item, 1)}
-                      >
-                        Aprobar
-                      </Button>
-                      <Button
-                        variant={seleccionados.includes(item.id) ? 'secondary' : 'danger'}
-                        size="sm"
-                        className="min-w-[96px]"
-                        icon={<X className="h-3.5 w-3.5" />}
-                        disabled={seleccionados.includes(item.id) || aprobacionMultipleEnviando}
-                        onClick={() => abrirRevision(item, 4)}
-                      >
-                        Denegar
-                      </Button>
-                    </div>
+                    {item.aprobado === 0 ? (
+                      <div className="flex justify-center gap-2">
+                        <Button
+                          variant={seleccionados.includes(item.id) ? 'secondary' : 'success'}
+                          size="sm"
+                          className="min-w-[96px]"
+                          icon={<Check className="h-3.5 w-3.5" />}
+                          disabled={seleccionados.includes(item.id) || aprobacionMultipleEnviando}
+                          onClick={() => abrirConfirmacionDictamen(item, 1)}
+                        >
+                          Aprobar
+                        </Button>
+                        <Button
+                          variant={seleccionados.includes(item.id) ? 'secondary' : 'danger'}
+                          size="sm"
+                          className="min-w-[96px]"
+                          icon={<X className="h-3.5 w-3.5" />}
+                          disabled={seleccionados.includes(item.id) || aprobacionMultipleEnviando}
+                          onClick={() => abrirConfirmacionDictamen(item, 4)}
+                        >
+                          Denegar
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="block text-center text-xs text-slate-500">Solo lectura</span>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        {pendientes.length > elementosPorPagina && (
+          <Pagination
+            paginaActual={paginaSegura}
+            totalPaginas={totalPaginas}
+            totalElementos={pendientes.length}
+            elementosPorPagina={elementosPorPagina}
+            onCambiarPagina={setPaginaActual}
+            onCambiarElementosPorPagina={(cantidad) => {
+              setElementosPorPagina(cantidad);
+              setPaginaActual(1);
+            }}
+          />
+        )}
       </div>
 
       <Modal
@@ -528,108 +594,27 @@ export const AprobacionesPage: React.FC = () => {
       </Modal>
 
       <Modal
-        isOpen={!!revision}
-        onClose={cerrarRevision}
-        title={revision?.decision === 1 ? 'Revisión para aprobar' : 'Revisión para denegar'}
-        subtitle={`Ficha completa del componente · Folio #${movimientoRevision?.id ?? ''}`}
-        maxWidth="4xl"
+        isOpen={!!dictamenPendiente}
+        onClose={cerrarConfirmacionDictamen}
+        title={dictamenPendiente?.decision === 1 ? 'Confirmar aprobación' : 'Confirmar denegación'}
+        subtitle={`Movimiento #${dictamenPendiente?.movimiento.id ?? ''}`}
+        maxWidth="md"
       >
-        {revision && movimientoRevision && (
-          <form onSubmit={confirmarDictamen} className="space-y-5">
-            <section>
-              <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Identificación del componente</h2>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                <CampoDato etiqueta="Folio" valor={movimientoRevision.id} mono />
-                <CampoDato etiqueta="Serial" valor={movimientoRevision.serial} mono />
-                <CampoDato etiqueta="MATNR" valor={movimientoRevision.matnr} mono />
-                <CampoDato etiqueta="MATNR producto terminado" valor={movimientoRevision.matnrFg} mono />
-                <CampoDato etiqueta="Descripción" valor={movimientoRevision.descripcion} />
-                <CampoDato etiqueta="Fecha y hora de emisión" valor={movimientoRevision.fechaHora || `${movimientoRevision.fecha} ${movimientoRevision.hora}`} mono />
-                <CampoDato etiqueta="Certificación" valor={`${movimientoRevision.certificacionId}${movimientoRevision.certificacionNombre ? ` · ${movimientoRevision.certificacionNombre}` : ''}`} />
-                <CampoDato etiqueta="Línea" valor={movimientoRevision.linea} />
-              </div>
-            </section>
-
-            <section>
-              <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Movimiento y material</h2>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                <CampoDato etiqueta="Tipo de movimiento" valor={`${movimientoRevision.movimientoTipoId} · ${movimientoRevision.movimientoTipo}`} />
-                <CampoDato etiqueta="Razón" valor={razonRevision} />
-                <CampoDato etiqueta="Motivo específico" valor={movimientoRevision.motivoEspecifico} />
-                <CampoDato etiqueta="Cantidad" valor={`${movimientoRevision.cantidad} ${movimientoRevision.unidad}`} />
-                <CampoDato etiqueta="Costo unitario" valor={movimientoRevision.costoUnitario} />
-                <CampoDato etiqueta="Costo total" valor={movimientoRevision.costoTotal} />
-                <CampoDato etiqueta="Almacén" valor={movimientoRevision.almacen} mono />
-                <CampoDato etiqueta="Almacén de salida" valor={movimientoRevision.almacenSalida} mono />
-                <CampoDato etiqueta="Almacén de retorno" valor={movimientoRevision.almacenRetorno} mono />
-                <CampoDato etiqueta="Centro de costo" valor={movimientoRevision.centroCosto} mono />
-                <CampoDato etiqueta="Orden de producción" valor={movimientoRevision.ordenProduccion} mono />
-                <CampoDato etiqueta="Lote" valor={movimientoRevision.lote} mono />
-              </div>
-            </section>
-
-            <section>
-              <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Reporte y estado del registro</h2>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                <CampoDato etiqueta="Empleado" valor={movimientoRevision.empleado} />
-                <CampoDato etiqueta="ID de empleado" valor={movimientoRevision.empleadoId} mono />
-                <CampoDato etiqueta="Credencial" valor={movimientoRevision.credencial} mono />
-                <CampoDato etiqueta="Turno" valor={movimientoRevision.turno} />
-                <CampoDato etiqueta="Salida" valor={movimientoRevision.salida} />
-                <CampoDato etiqueta="Retorno" valor={movimientoRevision.retorno} />
-                <CampoDato etiqueta="Procesado" valor={movimientoRevision.procesado} />
-                <CampoDato etiqueta="Estado actual" valor={`${movimientoRevision.aprobado ?? 'N/D'} · ${movimientoRevision.estatus}`} />
-                <CampoDato etiqueta="Aprobado por" valor={movimientoRevision.nvAprobadoPor} />
-                <CampoDato etiqueta="Fecha de aprobación" valor={movimientoRevision.dtAprobado} mono />
-                <CampoDato etiqueta="Observaciones" valor={movimientoRevision.observaciones} />
-                <CampoDato etiqueta="Comentarios de aprobación" valor={movimientoRevision.comentariosAprobacion} />
-              </div>
-            </section>
-
-            {movimientoRevision.historial.length > 0 && (
-              <section>
-                <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Historial</h2>
-                <div className="space-y-2">
-                  {movimientoRevision.historial.map((hito) => (
-                    <div key={hito.id} className="rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-700">
-                      <div className="flex flex-wrap justify-between gap-1">
-                        <span className="font-semibold text-slate-800 dark:text-slate-100">{hito.titulo} · {hito.estado}</span>
-                        <span className="font-mono text-slate-500">{hito.fechaHora}</span>
-                      </div>
-                      <p className="mt-1 text-slate-600 dark:text-slate-300">{hito.descripcion}</p>
-                      <p className="mt-1 text-slate-500">Responsable: {hito.usuario} · {hito.rol}</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {datosBase && (
-              <details className="rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
-                <summary className="cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-200">
-                  Ver valores originales de dbo.Movimientos
-                </summary>
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                  {Object.entries(datosBase).map(([columna, valor]) => (
-                    <CampoDato key={columna} etiqueta={columna} valor={valor} mono />
-                  ))}
-                </div>
-              </details>
-            )}
-
-            <section className={`rounded-xl border p-4 ${revision.decision === 1
-              ? 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/30'
-              : 'border-rose-200 bg-rose-50/70 dark:border-rose-900 dark:bg-rose-950/30'}`}
-            >
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                {revision.decision === 1 ? 'Confirmar aprobación' : 'Confirmar denegación'}
-              </h2>
-              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-                Al confirmar, se actualizará el dictamen y SQL Server registrará la fecha y hora.
-              </p>
-              <label htmlFor="nombre-responsable" className="mb-1 mt-3 block text-xs font-medium text-slate-700 dark:text-slate-300">
-                Nombre que quedará registrado como responsable (no verificado)
-              </label>
+        {dictamenPendiente && (
+          <form onSubmit={confirmarDictamen} className="space-y-4">
+            <p className={`rounded-lg border px-3 py-3 text-sm font-semibold ${
+              dictamenPendiente.decision === 1
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
+                : 'border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200'
+            }`}>
+              {`¿Estás seguro de ${dictamenPendiente.decision === 1 ? 'aprobar' : 'denegar'} el movimiento #${dictamenPendiente.movimiento.id}?`}
+              {' '}Esta acción se guarda en SOE y no se puede deshacer desde la aplicación.
+            </p>
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              {dictamenPendiente.movimiento.movimientoTipo} · {dictamenPendiente.movimiento.matnr} · {dictamenPendiente.movimiento.cantidad} piezas
+            </p>
+            <label htmlFor="nombre-responsable" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+              Nombre que quedará registrado como responsable (no verificado)
               <input
                 id="nombre-responsable"
                 name="nombre-responsable"
@@ -639,48 +624,47 @@ export const AprobacionesPage: React.FC = () => {
                 required
                 value={nombreResponsable}
                 onChange={(event) => setNombreResponsable(event.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                disabled={dictamenEnviando}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 placeholder="Nombre y apellido"
               />
-              {requiereComentarioRechazo && (
-                <>
-                  <label htmlFor="comentario-rechazo" className="mb-1 mt-3 block text-xs font-medium text-slate-700 dark:text-slate-300">
-                    Comentario de rechazo
-                  </label>
-                  <textarea
-                    id="comentario-rechazo"
-                    name="comentario-rechazo"
-                    required
-                    maxLength={500}
-                    rows={3}
-                    value={comentarioRechazo}
-                    onChange={(event) => setComentarioRechazo(event.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                    placeholder="Describe brevemente el motivo del rechazo"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                    Solo se muestra en Movimientos durante esta sesión; no se guarda en la base de datos.
-                  </p>
-                </>
-              )}
-            </section>
-
+            </label>
+            {requiereComentarioRechazo && (
+              <label htmlFor="comentario-rechazo" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+                Comentario de rechazo
+                <textarea
+                  id="comentario-rechazo"
+                  name="comentario-rechazo"
+                  required
+                  maxLength={500}
+                  rows={3}
+                  value={comentarioRechazo}
+                  onChange={(event) => setComentarioRechazo(event.target.value)}
+                  disabled={dictamenEnviando}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  placeholder="Describe brevemente el motivo del rechazo"
+                />
+                <span className="mt-1 block text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                  Solo se muestra en Movimientos durante esta sesión; no se guarda en la base de datos.
+                </span>
+              </label>
+            )}
             {errorDictamen && (
               <div role="alert" className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
                 {errorDictamen}
               </div>
             )}
             <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-              <Button type="button" variant="ghost" onClick={cerrarRevision} disabled={dictamenEnviando}>
+              <Button type="button" variant="outline" onClick={cerrarConfirmacionDictamen} disabled={dictamenEnviando}>
                 Cancelar
               </Button>
               <Button
                 type="submit"
-                variant={revision.decision === 1 ? 'success' : 'danger'}
+                variant={dictamenPendiente.decision === 1 ? 'success' : 'danger'}
                 loading={dictamenEnviando}
                 disabled={!nombreResponsable.trim() || (requiereComentarioRechazo && !comentarioRechazo.trim())}
               >
-                {revision.decision === 1 ? 'Confirmar aprobación' : 'Confirmar denegación'}
+                {dictamenPendiente.decision === 1 ? 'Sí, aprobar' : 'Sí, denegar'}
               </Button>
             </div>
           </form>

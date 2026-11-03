@@ -66,6 +66,9 @@ export interface FiltrosMovimientosQuery {
   tipoId?: string;
   aprobado?: string;
   razonId?: string;
+  certificacionId?: string;
+  lineaId?: string;
+  almacen?: string;
   fechaInicio?: string;
   fechaFin?: string;
   limite?: string;

@@ -36,16 +36,19 @@ La interfaz usa fuentes disponibles en el equipo y no descarga tipografías de t
 
 | Sección | ¿Qué permite hacer? |
 |---|---|
-| **Panel principal** | Revisar indicadores y tendencias del periodo seleccionado. El periodo predeterminado se basa en los movimientos disponibles, no necesariamente en el día de hoy. |
-| **Movimientos** | Buscar, ordenar y filtrar los movimientos cargados; abrir su ficha y exportar los resultados a CSV. |
+| **Panel principal** | Dashboard para Administradores demo: revisar tendencias y gráficas del periodo seleccionado. |
+| **Movimientos** | Buscar por filtros guiados compartidos, consultar fecha de aprobación, abrir la ficha y exportar resultados a CSV. |
 | **Ficha del movimiento** | Consultar los datos disponibles del registro. La ruta de cambio de razón está bloqueada en la configuración demo actual. |
-| **Aprobaciones** | Revisar movimientos pendientes, aplicar filtros y registrar un dictamen. También permite procesar una selección de pendientes. |
+| **Aprobaciones** | Consultar piezas Scrap, pendientes, aprobados y rechazados; las tarjetas filtran el listado. Permite emitir dictámenes de pendientes. |
+| **Filtros paso a paso** | Para Administradores demo: elegir un mes y criterios; los resultados se consultan al pulsar Buscar. |
 | **Fallas por línea** | Consultar un resumen de cantidad y número de movimientos de Scrap por línea para un periodo reciente calculado por el sistema. |
-| **Comparación mensual** | Comparar el mes elegido con el mes calendario anterior en tendencias y desgloses por certificación, razón y línea. |
+| **Comparación mensual** | Para Administradores demo: comparar el mes elegido con el anterior. |
 | **Reportes** | Filtrar los movimientos cargados; si se eligen ambas fechas, consultar el intervalo completo al servidor y exportar el resultado. |
-| **Motivos y configuración** | Consultar referencias y opciones visuales de la aplicación. Estos datos y ajustes son locales; no actualizan catálogos corporativos. |
+| **Motivos y configuración** | Páginas informativas/locales que ya no aparecen como pestañas en el menú lateral. |
 
 En el Dashboard, la gráfica **Aprobaciones por responsable** permite elegir entre todas las filas aprobadas de la tabla y las aprobaciones del periodo seleccionado. El conteo usa `aprobado = 1`, agrupa por `nvAprobadoPor` y, al elegir el periodo, delimita por la fecha de aprobación `dtAprobado`. No filtra por tipo de movimiento.
+
+Gerente y Superintendente solo ven Movimientos y Aprobaciones. Dashboard, Comparación mensual y Filtros paso a paso quedan para Administradores demo. En Movimientos, la columna **Supervisor** muestra el valor de `dbo.Movimientos.Empleado`. Estas restricciones son solo de navegación en la interfaz; no representan autorización real.
 
 ## ¿Qué significa cada estado del dictamen?
 

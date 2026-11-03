@@ -14,6 +14,7 @@ interface StatCardProps {
   };
   colorAccent?: 'blue' | 'amber' | 'emerald' | 'rose' | 'purple';
   onClick?: () => void;
+  active?: boolean;
   /** Retraso de entrada (segundos) para escalonar varias tarjetas. */
   delay?: number;
 }
@@ -54,6 +55,7 @@ export const StatCard: React.FC<StatCardProps> = ({
   variacion,
   colorAccent = 'blue',
   onClick,
+  active = false,
   delay = 0,
 }) => {
   const accent = ACCENTS[colorAccent];
@@ -74,8 +76,11 @@ export const StatCard: React.FC<StatCardProps> = ({
       }}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
+      aria-pressed={onClick ? active : undefined}
       className={`group relative overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs transition-shadow duration-300 hover:shadow-xl ${accent.glow} ${
         onClick ? 'cursor-pointer' : ''
+      } ${
+        active ? 'ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-slate-950' : ''
       }`}
     >
       {/* Barra de acento superior */}

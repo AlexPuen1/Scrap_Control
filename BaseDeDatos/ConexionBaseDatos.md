@@ -100,7 +100,7 @@ La gráfica del Dashboard selecciona «Todas las aprobaciones» o «Mes seleccio
 
 `GET /api/movimientos` consulta `dbo.Movimientos`, une `dbo.Certificacion` para obtener la línea y busca la descripción de razón en `dbo.vw_Scrap_PowerBI`.
 
-Sin fechas, obtiene `MAX(fecha_hora)` y usa como inicio la fecha resultante menos un mes; el final es el día posterior a la fecha máxima, exclusivo. El intervalo no equivale necesariamente al mes calendario anterior. Con rango explícito, el controller recibe `fechaInicio` inclusiva y `fechaFin` exclusiva. Tipo, estado, razón y búsqueda se filtran después de recibir las filas SQL, en el proceso Node.
+Sin fechas, obtiene `MAX(fecha_hora)` y usa como inicio la fecha resultante menos un mes; el final es el día posterior a la fecha máxima, exclusivo. El intervalo no equivale necesariamente al mes calendario anterior. Con rango explícito, el controller recibe `fechaInicio` inclusiva y `fechaFin` exclusiva. Los filtros opcionales `tipoId`, `aprobado`, `razonId`, `certificacionId`, `lineaId`, `almacen` y `busqueda` se aplican después de recibir las filas SQL, en el proceso Node. `aprobado=null` y `razonId=null` permiten localizar movimientos sin dictamen o sin razón.
 
 No se ha implementado paginación de servidor. Evitar consultar rangos excesivamente amplios hasta que el endpoint/repositorio incorporen límites adecuados.
 

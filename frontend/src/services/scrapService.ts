@@ -44,7 +44,7 @@ function adaptarMovimiento(row: MovimientoDB): Movimiento {
     serial: row.serial || '',
     nvAprobadoPor: row.nvAprobadoPor || undefined,
     dtAprobado: row.dtAprobado || undefined,
-    empleado: '',
+    empleado: row.Empleado || '',
     descripcion: '',
     linea: row.LineaNombre || (row.LineaId === null || row.LineaId === undefined
       ? 'Sin línea asignada'
@@ -59,12 +59,29 @@ function adaptarMovimiento(row: MovimientoDB): Movimiento {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
-async function solicitarMovimientos(fechaInicio?: string, fechaFin?: string): Promise<Movimiento[]> {
+export interface FiltrosBusquedaMovimientos {
+  busqueda?: string;
+  tipoId?: string;
+  aprobado?: string;
+  razonId?: string;
+  certificacionId?: string;
+  lineaId?: string;
+  almacen?: string;
+}
+
+async function solicitarMovimientos(
+  fechaInicio?: string,
+  fechaFin?: string,
+  filtros: FiltrosBusquedaMovimientos = {},
+): Promise<Movimiento[]> {
   const parametros = new URLSearchParams();
   if (fechaInicio && fechaFin) {
     parametros.set('fechaInicio', fechaInicio);
     parametros.set('fechaFin', fechaFin);
   }
+  Object.entries(filtros).forEach(([clave, valor]) => {
+    if (valor) parametros.set(clave, valor);
+  });
   const query = parametros.size > 0 ? `?${parametros.toString()}` : '';
   const response = await fetch(`${API_BASE}/movimientos${query}`);
   const body = await response.json() as { exitoso: boolean; datos?: MovimientoDB[]; mensaje?: string };
@@ -172,7 +189,8 @@ async function enviarActualizacionRazon(id: string, razonId: number | null): Pro
 
 /** El frontend consume el backend; la llamada a la API corporativa queda solo en servidor. */
 export const ScrapService = {
-  obtenerMovimientos: (fechaInicio?: string, fechaFin?: string) => solicitarMovimientos(fechaInicio, fechaFin),
+  obtenerMovimientos: (fechaInicio?: string, fechaFin?: string, filtros?: FiltrosBusquedaMovimientos) =>
+    solicitarMovimientos(fechaInicio, fechaFin, filtros),
   obtenerAprobaciones: (fechaInicio?: string, fechaFin?: string) => solicitarAprobaciones(fechaInicio, fechaFin),
   obtenerMovimiento: (id: string) => solicitarMovimiento(id),
 

@@ -91,6 +91,72 @@ test('GET movimientos no revela mensajes internos de la API de datos', async () 
   }
 });
 
+test('GET movimientos valida y reenvía filtros guiados', async () => {
+  const listarOriginal = MovimientosRepository.prototype.listar;
+  const filtrosRecibidos: Record<string, string | undefined>[] = [];
+  MovimientosRepository.prototype.listar = async (filtros) => {
+    filtrosRecibidos.push(filtros);
+    return [];
+  };
+
+  try {
+    const { response, estado } = crearResponse();
+    await getMovimientos({
+      query: {
+        fechaInicio: '2026-10-01',
+        fechaFin: '2026-11-01',
+        busqueda: 'SER-10',
+        tipoId: '1',
+        aprobado: '0',
+        razonId: 'null',
+        certificacionId: '200',
+        lineaId: '3',
+        almacen: 'ALM-01',
+      },
+    } as unknown as Request, response);
+
+    assert.equal(estado.statusCode, 200);
+    assert.deepEqual(filtrosRecibidos, [{
+      busqueda: 'SER-10',
+      tipoId: '1',
+      aprobado: '0',
+      razonId: 'null',
+      certificacionId: '200',
+      lineaId: '3',
+      almacen: 'ALM-01',
+      fechaInicio: '2026-10-01',
+      fechaFin: '2026-11-01',
+    }]);
+  } finally {
+    MovimientosRepository.prototype.listar = listarOriginal;
+  }
+});
+
+test('GET movimientos rechaza filtros numéricos mal formados antes de consultar', async () => {
+  const listarOriginal = MovimientosRepository.prototype.listar;
+  let consultas = 0;
+  MovimientosRepository.prototype.listar = async () => {
+    consultas += 1;
+    return [];
+  };
+
+  try {
+    for (const query of [
+      { tipoId: '1abc' },
+      { aprobado: '3' },
+      { certificacionId: '0' },
+      { lineaId: '999999999999999999' },
+    ]) {
+      const { response, estado } = crearResponse();
+      await getMovimientos({ query } as unknown as Request, response);
+      assert.equal(estado.statusCode, 400);
+    }
+    assert.equal(consultas, 0);
+  } finally {
+    MovimientosRepository.prototype.listar = listarOriginal;
+  }
+});
+
 test('GET aprobaciones limita por dtAprobado y devuelve nombres agrupados', async () => {
   const obtenerOriginal = MovimientosRepository.prototype.obtenerAprobacionesPorResponsable;
   const rangos: string[][] = [];

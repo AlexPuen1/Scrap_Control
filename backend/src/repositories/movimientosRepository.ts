@@ -31,8 +31,14 @@ function enriquecerMovimiento(movimiento: MovimientoDB): MovimientoDetalleDTO {
 function aplicarFiltros(movimientos: MovimientoDetalleDTO[], filtros: FiltrosMovimientosQuery) {
   return movimientos.filter((movimiento) => {
     if (filtros.tipoId && movimiento.MovimientoTipoId !== Number(filtros.tipoId)) return false;
-    if (filtros.aprobado !== undefined && filtros.aprobado !== '' && movimiento.aprobado !== Number(filtros.aprobado)) return false;
-    if (filtros.razonId && movimiento.RazonId !== Number(filtros.razonId)) return false;
+    if (filtros.aprobado === 'null' && movimiento.aprobado !== null) return false;
+    if (filtros.aprobado !== undefined && filtros.aprobado !== '' && filtros.aprobado !== 'null'
+      && movimiento.aprobado !== Number(filtros.aprobado)) return false;
+    if (filtros.razonId === 'null' && movimiento.RazonId !== null) return false;
+    if (filtros.razonId && filtros.razonId !== 'null' && movimiento.RazonId !== Number(filtros.razonId)) return false;
+    if (filtros.certificacionId && movimiento.CertificacionId !== Number(filtros.certificacionId)) return false;
+    if (filtros.lineaId && movimiento.LineaId !== Number(filtros.lineaId)) return false;
+    if (filtros.almacen && movimiento.almacen !== filtros.almacen) return false;
 
     if (filtros.busqueda) {
       const busqueda = filtros.busqueda.toLocaleLowerCase();
