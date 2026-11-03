@@ -13,6 +13,7 @@ import {
   Factory,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
+import { useDemoSession } from '../context/demoSession';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -28,6 +29,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
 }) => {
   const { resumenKPIs } = useScrap();
+  const { usuario } = useDemoSession();
 
   const navItems = [
     {
@@ -73,6 +75,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: <Settings className="w-5 h-5 shrink-0" />,
     },
   ];
+  const navItemsVisibles = usuario?.rol === 'Administrador'
+    ? navItems
+    : navItems.filter((item) => ['/dashboard', '/movimientos', '/aprobaciones'].includes(item.to));
 
   return (
     <>
@@ -126,7 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Navigation Items */}
         <div className="flex-1 py-4 px-3 space-y-1.5 overflow-y-auto">
-          {navItems.map((item) => (
+          {navItemsVisibles.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

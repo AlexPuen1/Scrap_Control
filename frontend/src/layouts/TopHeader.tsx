@@ -12,12 +12,14 @@ import {
   Info,
   ChevronDown,
   User,
+  LogOut,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useScrap } from '../context/ScrapContext';
 import { INFO_PLANTA, TURNOS_PLANTA } from '../constants';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useDemoSession } from '../context/demoSession';
 
 interface TopHeaderProps {
   onOpenMobileMenu: () => void;
@@ -26,6 +28,7 @@ interface TopHeaderProps {
 export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
   const { theme, toggleTheme } = useTheme();
   const { notificaciones, turnoActivo, marcarNotificacionLeida, marcarTodasNotificacionesLeidas } = useScrap();
+  const { usuario, cerrarSesion } = useDemoSession();
   const navigate = useNavigate();
 
   const [notifOpen, setNotifOpen] = useState(false);
@@ -83,6 +86,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
 
       {/* Lado Derecho: Turno Activo + Notificaciones + Tema + Usuario */}
       <div className="flex items-center gap-2 sm:gap-3">
+        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200 sm:text-xs">
+          {usuario?.rol || 'Demostración'}
+        </span>
+
         {/* Turno calculado automáticamente según el reloj local */}
         <div
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200"
@@ -218,10 +225,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
             </div>
             <div className="hidden xl:flex flex-col text-left">
               <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-tight">
-                Usuario no identificado
+                {usuario?.nombre || 'Usuario de demostración'}
               </span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                Perfil no configurado
+                {usuario?.rol || 'Sin rol'}
               </span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden xl:block" />
@@ -239,23 +246,34 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
             >
               <div className="flex items-center gap-3 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-xl mb-2">
                 <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
-                  ?
+                  {usuario?.nombre.slice(0, 1) || 'D'}
                 </div>
                 <div>
-                  <h4 className="font-semibold text-slate-900 dark:text-white">Sesión no autenticada</h4>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">No hay identidad de usuario configurada</p>
+                  <h4 className="font-semibold text-slate-900 dark:text-white">{usuario?.nombre}</h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">{usuario?.rol} · acceso de demostración</p>
                 </div>
               </div>
 
               <div className="space-y-1">
+                {usuario?.rol === 'Administrador' && (
+                  <button
+                    onClick={() => {
+                      navigate('/configuracion');
+                      setProfileOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
+                  >
+                    <User className="w-4 h-4 text-slate-400" /> Preferencias de Usuario
+                  </button>
+                )}
                 <button
                   onClick={() => {
-                    navigate('/configuracion');
+                    cerrarSesion();
                     setProfileOpen(false);
                   }}
-                  className="w-full text-left px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
+                  className="w-full text-left px-3 py-2 rounded-lg text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2"
                 >
-                  <User className="w-4 h-4 text-slate-400" /> Preferencias de Usuario
+                  <LogOut className="w-4 h-4" /> Salir de la demostración
                 </button>
               </div>
             </motion.div>

@@ -7,6 +7,7 @@ import {
   Tag,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
+import { useDemoSession } from '../context/demoSession';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
@@ -17,6 +18,7 @@ import type { OpcionRazon } from '../types';
 export const MovimientoDetallePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { usuario } = useDemoSession();
   const { movimientos, movimientosCargando, actualizarRazonMovimiento } = useScrap();
   const movimientoEnLista = movimientos.find((m) => m.id === id || m.serial === id);
   const [movimientoConsultado, setMovimientoConsultado] = useState<{
@@ -102,13 +104,6 @@ export const MovimientoDetallePage: React.FC = () => {
     ?? (razonActualNoDisponible
       ? '__actual__'
       : movimiento?.razonId === null || movimiento?.razonId === undefined ? '' : String(movimiento.razonId));
-  const razonModificada = Boolean(
-    movimiento
-    && razonSeleccionada !== '__actual__'
-    && (razonSeleccionada === ''
-      ? movimiento.razonId !== null
-      : Number(razonSeleccionada) !== movimiento.razonId),
-  );
   const detalleNoNumerico = Boolean(id && !/^[1-9]\d*$/.test(id));
   const errorDetalleActual = errorDetalle && errorDetalle.id === id ? errorDetalle.mensaje : null;
   const mensajeErrorDetalle = errorDetalleActual
@@ -344,12 +339,13 @@ export const MovimientoDetallePage: React.FC = () => {
                 </span>
               </div>
             </div>
+            {usuario?.rol === 'Administrador' ? (
             <div className="mt-5 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
               <label htmlFor="razon-movimiento" className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
                 Corregir razón del movimiento
               </label>
               <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                Elige una descripción del catálogo disponible para este tipo de movimiento.
+                Los cambios de razón están deshabilitados durante la demostración para evitar escrituras con una identidad no verificada.
               </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <select
@@ -360,7 +356,7 @@ export const MovimientoDetallePage: React.FC = () => {
                     setBorradorRazon({ movimientoId: movimiento.id, valor: event.target.value });
                     setErrorGuardarRazon(null);
                   }}
-                  disabled={cargandoRazones || guardandoRazon}
+                  disabled
                   className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 >
                   <option value="">Sin razón</option>
@@ -374,7 +370,7 @@ export const MovimientoDetallePage: React.FC = () => {
                 <Button
                   variant="primary"
                   size="sm"
-                  disabled={!razonModificada || cargandoRazones || guardandoRazon || Boolean(errorRazon)}
+                  disabled
                   onClick={() => void guardarRazon()}
                 >
                   {guardandoRazon ? 'Guardando…' : 'Guardar razón'}
@@ -391,6 +387,11 @@ export const MovimientoDetallePage: React.FC = () => {
                 </p>
               )}
             </div>
+            ) : (
+              <p className="mt-5 rounded-lg border border-slate-200 p-4 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                La edición de razones está reservada al rol Administrador.
+              </p>
+            )}
           </Card>
 
           {/* Historial y Auditoría Cronológica */}

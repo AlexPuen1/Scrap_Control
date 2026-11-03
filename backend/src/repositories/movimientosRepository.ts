@@ -53,6 +53,30 @@ function aplicarFiltros(movimientos: MovimientoDetalleDTO[], filtros: FiltrosMov
 }
 
 export class MovimientosRepository {
+  async obtenerAprobacionesPorResponsable(
+    fechaInicio?: string,
+    fechaFin?: string,
+  ): Promise<{ nombre: string; aprobaciones: number }[]> {
+    const filtroFecha = fechaInicio && fechaFin
+      ? `AND dtAprobado >= '${fechaInicio}' AND dtAprobado < '${fechaFin}'`
+      : '';
+    const filas = await consultarSQL<{ nombre: string; aprobaciones: number | string }>(`
+      SELECT
+        COALESCE(NULLIF(LTRIM(RTRIM(nvAprobadoPor)), ''), 'Sin responsable registrado') AS nombre,
+        COUNT_BIG(*) AS aprobaciones
+      FROM dbo.Movimientos
+      WHERE aprobado = 1
+        ${filtroFecha}
+      GROUP BY COALESCE(NULLIF(LTRIM(RTRIM(nvAprobadoPor)), ''), 'Sin responsable registrado')
+      ORDER BY aprobaciones DESC, nombre
+    `);
+
+    return filas.map((fila) => ({
+      nombre: fila.nombre,
+      aprobaciones: Number(fila.aprobaciones),
+    }));
+  }
+
   async obtenerRazones(movimientoTipoId: number): Promise<OpcionRazonDB[]> {
     if (!Number.isSafeInteger(movimientoTipoId) || movimientoTipoId < 1) {
       throw new Error('El tipo de movimiento no es válido.');

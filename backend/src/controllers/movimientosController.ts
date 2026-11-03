@@ -44,6 +44,47 @@ export async function getMovimientos(req: Request, res: Response) {
   }
 }
 
+export async function getAprobaciones(req: Request, res: Response) {
+  const tieneFechaInicio = Object.hasOwn(req.query, 'fechaInicio');
+  const tieneFechaFin = Object.hasOwn(req.query, 'fechaFin');
+  const formatoFechaValido = (fecha: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return false;
+    const parsed = new Date(`${fecha}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === fecha;
+  };
+  const fechaInicio = req.query.fechaInicio;
+  const fechaFin = req.query.fechaFin;
+
+  if (tieneFechaInicio !== tieneFechaFin
+    || (tieneFechaInicio && (
+      typeof fechaInicio !== 'string'
+      || typeof fechaFin !== 'string'
+      || !formatoFechaValido(fechaInicio)
+      || !formatoFechaValido(fechaFin)
+      || fechaInicio >= fechaFin
+    ))) {
+    res.status(400).json({
+      exitoso: false,
+      mensaje: 'Envía ambas fechas válidas en formato YYYY-MM-DD, con fechaFin posterior, o ninguna para consultar todas las aprobaciones.',
+    });
+    return;
+  }
+
+  try {
+    const datos = await repo.obtenerAprobacionesPorResponsable(
+      typeof fechaInicio === 'string' ? fechaInicio : undefined,
+      typeof fechaFin === 'string' ? fechaFin : undefined,
+    );
+    res.json({
+      exitoso: true,
+      datos,
+      total: datos.reduce((total, fila) => total + fila.aprobaciones, 0),
+    });
+  } catch (error) {
+    responderErrorInterno(res, 'Error al obtener aprobaciones', 'Error interno al obtener aprobaciones.', error);
+  }
+}
+
 export async function getMovimientoById(req: Request, res: Response) {
   if (!/^[1-9]\d*$/.test(req.params.id)) {
     res.status(400).json({ exitoso: false, mensaje: 'ID de movimiento inválido.' });

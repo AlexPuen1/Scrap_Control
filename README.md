@@ -2,7 +2,7 @@
 
 **Una vista práctica para consultar y dar seguimiento a movimientos de Scrap.**
 
-SCRAPControl es una aplicación web interna que reúne información de movimientos registrados en la base corporativa **SOE**. Ayuda a los equipos a revisar qué ocurrió, cuándo, en qué certificación o línea, y qué razón está asociada con cada movimiento. También permite registrar un dictamen y corregir la razón cuando corresponda.
+SCRAPControl es una aplicación web interna que reúne información de movimientos registrados en la base corporativa **SOE**. Ayuda a los equipos a revisar qué ocurrió, cuándo, en qué certificación o línea, y qué razón está asociada con cada movimiento. También permite registrar un dictamen. Aunque existe una ruta de actualización de razón, permanece bloqueada por el backend en la configuración demo actual.
 
 > **En pocas palabras:** consulta información operativa, la organiza en listas y gráficas, y facilita revisar movimientos pendientes. No reemplaza los sistemas corporativos ni decide por sí misma qué debe aprobarse.
 
@@ -11,7 +11,7 @@ SCRAPControl es una aplicación web interna que reúne información de movimient
 - **Entender la situación del Scrap:** consultar cantidades y movimientos del periodo disponible, y observar su distribución por fecha, certificación, línea y razón.
 - **Encontrar registros:** buscar y filtrar movimientos para revisar sus datos y seguimiento.
 - **Dar seguimiento a pendientes:** revisar movimientos pendientes y registrar si se aprueban o rechazan, individualmente o en grupo.
-- **Mantener la razón asociada:** consultar las razones disponibles y corregir la razón de un movimiento cuando sea necesario.
+- **Mantener la razón asociada:** consultar las razones disponibles; la modificación de una razón no está habilitada en la configuración demo actual.
 - **Preparar información para revisión:** consultar reportes en pantalla y exportar movimientos a un archivo CSV que puede abrirse en Excel.
 
 La herramienta apoya la revisión y el seguimiento; **la interpretación de los resultados y las decisiones de negocio corresponden a las personas responsables**.
@@ -25,10 +25,12 @@ SCRAPControl consulta y organiza los movimientos
             ↓
 El equipo revisa listas, fichas, indicadores y reportes
             ↓
-Cuando corresponde, registra un dictamen o corrige una razón
+Cuando corresponde, registra un dictamen autorizado
 ```
 
 La aplicación obtiene información mediante un servicio corporativo. Algunas pantallas consultan datos directamente para generar sus resúmenes; otras filtran o agrupan los registros que ya se cargaron. Los cambios de dictamen y de razón se guardan en la base corporativa, no solo en la pantalla.
+
+La interfaz usa fuentes disponibles en el equipo y no descarga tipografías de terceros al abrirse; la conexión que la aplicación necesita con SOE sigue siendo un destino de red independiente.
 
 ## ¿Qué encontrará en la aplicación?
 
@@ -36,12 +38,14 @@ La aplicación obtiene información mediante un servicio corporativo. Algunas pa
 |---|---|
 | **Panel principal** | Revisar indicadores y tendencias del periodo seleccionado. El periodo predeterminado se basa en los movimientos disponibles, no necesariamente en el día de hoy. |
 | **Movimientos** | Buscar, ordenar y filtrar los movimientos cargados; abrir su ficha y exportar los resultados a CSV. |
-| **Ficha del movimiento** | Consultar los datos disponibles del registro y, si hace falta, cambiar su razón por una opción válida o dejarla sin razón. |
+| **Ficha del movimiento** | Consultar los datos disponibles del registro. La ruta de cambio de razón está bloqueada en la configuración demo actual. |
 | **Aprobaciones** | Revisar movimientos pendientes, aplicar filtros y registrar un dictamen. También permite procesar una selección de pendientes. |
 | **Fallas por línea** | Consultar un resumen de cantidad y número de movimientos de Scrap por línea para un periodo reciente calculado por el sistema. |
 | **Comparación mensual** | Comparar el mes elegido con el mes calendario anterior en tendencias y desgloses por certificación, razón y línea. |
 | **Reportes** | Filtrar los movimientos cargados; si se eligen ambas fechas, consultar el intervalo completo al servidor y exportar el resultado. |
 | **Motivos y configuración** | Consultar referencias y opciones visuales de la aplicación. Estos datos y ajustes son locales; no actualizan catálogos corporativos. |
+
+En el Dashboard, la gráfica **Aprobaciones por responsable** permite elegir entre todas las filas aprobadas de la tabla y las aprobaciones del periodo seleccionado. El conteo usa `aprobado = 1`, agrupa por `nvAprobadoPor` y, al elegir el periodo, delimita por la fecha de aprobación `dtAprobado`. No filtra por tipo de movimiento.
 
 ## ¿Qué significa cada estado del dictamen?
 
@@ -61,11 +65,11 @@ Al rechazar movimientos Scrap, la aplicación solicita un comentario y lo muestr
 |---|---|
 | Consulta movimientos y algunos datos relacionados desde SOE. | Crea movimientos nuevos ni sustituye el sistema donde se originan los registros. |
 | Presenta resúmenes, gráficas, filtros y exportaciones. | Garantiza que los datos disponibles incluyan todos los periodos o campos que un área necesita. |
-| Guarda cambios de dictamen y de razón en datos corporativos. | Determina si un movimiento debe aprobarse ni valida que quien captura tenga un rol autorizado. |
+| Guarda dictámenes en datos corporativos. | Permite cambiar razones en el modo demo actual; determina si un movimiento debe aprobarse o verifica el rol de quien captura. |
 | Permite revisar motivos en sus pantallas. | Sincroniza el catálogo local de «Motivos» con el catálogo corporativo usado para corregir razones. |
 | Muestra una comparación de periodos para facilitar el análisis. | Define por sí misma metas, límites aceptables, costos oficiales, OEE o causas raíz. |
 
-**Antes de registrar un dictamen o cambiar una razón:** verifique que el movimiento sea el correcto y que el cambio esté autorizado según el proceso de su área. Estos cambios son persistentes; la aplicación no ofrece una función para deshacerlos. El nombre del responsable que se captura es un dato de registro, no una comprobación de identidad.
+**Antes de registrar un dictamen:** verifique que el movimiento sea el correcto y que el cambio esté autorizado según el proceso de su área. El dictamen es persistente; la aplicación no ofrece una función para deshacerlo. El nombre del responsable que se captura es un dato de registro, no una comprobación de identidad.
 
 ### Información que no debe interpretarse como dato oficial
 
@@ -86,6 +90,10 @@ Las gráficas describen los registros que la aplicación consultó. Una variaci�
 SCRAPControl está pensado para uso local: el backend escucha solo en `127.0.0.1`, mientras el equipo necesita acceso de red al servicio corporativo. La aplicación no inicia sesión por sí sola ni comprueba permisos de gerente; clientes locales todavía pueden invocar las rutas y las escrituras. El backend limita los orígenes web mediante `CORS_ORIGINS`, pero CORS no sustituye autenticación ni autorización. No exponga el backend en una red compartida o públicamente hasta implementar controles de identidad y permisos del lado servidor.
 
 ## Cambios recientes
+
+El 2 de noviembre de 2026 se habilitó en el Dashboard el selector «Todas las aprobaciones» / «Mes seleccionado». La consulta agrupa por responsable, cuenta filas con `aprobado = 1` y usa `dtAprobado` solo para el modo mensual. Los archivos técnicos documentan el endpoint, las pruebas y los límites de identidad/autorización. La verificación no consultó ni escribió datos de SOE.
+
+El 3 de noviembre de 2026 se recorrieron con Playwright las nueve pantallas administrativas en escritorio y móvil, con respuestas API simuladas y sin ejecutar escrituras. Se quitó la descarga de Google Fonts para evitar solicitudes externas y permitir el uso de fuentes del sistema sin conexión. La prueba no sustituye la validación con datos reales ni las pruebas de aceptación con RH/operación.
 
 El 28 de octubre de 2026 se corrigieron la protección y minimización de datos en CSV, la carga de fichas de movimientos fuera del periodo inicial, la consulta del rango de Reportes, la descripción de razones en la comparativa mensual, y textos que daban a entender una identidad o integraciones inexistentes. También se restringió CORS a orígenes configurados y se corrigió el estado de conexión ante respuestas SQL no JSON. La documentación técnica registra el detalle de los cambios y las verificaciones realizadas.
 

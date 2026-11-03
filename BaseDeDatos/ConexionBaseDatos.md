@@ -11,7 +11,7 @@ Body: { server, db, command }
 
 Configuración de referencia: servidor `est04db`, base `SOE`, API de desarrollo `https://est02des.magna.global/est_api`. La API responde ejecutando la instrucción SQL. El mecanismo de autenticación y la identidad SQL interna del servicio no se describen en Swagger ni se pueden inferir de este backend; deben confirmarse con el equipo propietario.
 
-El endpoint remoto acepta SQL genérico. SCRAPControl genera SQL en el backend y no permite que el navegador envíe comandos. Las lecturas se limitan localmente a una instrucción que inicia con `SELECT`; existen dos métodos específicos de escritura para dictamen y razón. Esta protección no limita por sí sola los permisos de la API remota.
+El endpoint remoto acepta SQL genérico. SCRAPControl genera SQL en el backend y no permite que el navegador envíe comandos. Las lecturas se limitan localmente a una instrucción que inicia con `SELECT`; existen operaciones específicas de escritura para dictamen y razón, pero el middleware Express actual solo permite el PATCH de dictamen y bloquea los demás con 403. Esta protección no limita por sí sola los permisos de la API remota.
 
 ## Recorrido de extremo a extremo
 
@@ -90,6 +90,12 @@ El código no agrega encabezado `Authorization` ni credenciales SQL al payload. 
 
 ## Lecturas actualmente usadas
 
+### Aprobaciones por responsable
+
+`GET /api/movimientos/aprobaciones` consulta directamente `dbo.Movimientos` y cuenta filas con `aprobado = 1`, agrupándolas por `nvAprobadoPor`. Acepta `fechaInicio` y `fechaFin` opcionales: deben enviarse ambas o ninguna. Con ambas, filtra `dtAprobado >= fechaInicio AND dtAprobado < fechaFin`; sin ellas, incluye todas las filas aprobadas sin restricción de fecha. No filtra por tipo de movimiento. Devuelve cada grupo, incluyendo nombres nulos/vacíos bajo «Sin responsable registrado», y el total de filas.
+
+La gráfica del Dashboard selecciona «Todas las aprobaciones» o «Mes seleccionado». El segundo modo usa el periodo actualmente aplicado en esa página, con fecha final inclusiva en UI convertida a límite exclusivo para SQL. Esta consulta refleja el estado actual por fila; no reconstruye eventos ni aprobaciones históricas.
+
 ### Movimientos
 
 `GET /api/movimientos` consulta `dbo.Movimientos`, une `dbo.Certificacion` para obtener la línea y busca la descripción de razón en `dbo.vw_Scrap_PowerBI`.
@@ -116,6 +122,8 @@ El 28 de octubre de 2026, `npm run test:db` confirmó mediante consulta de solo 
 
 Se probaron entradas inválidas de fechas, mes, ID, decisión y razón; respondieron HTTP 400. No se enviaron valores válidos a las rutas `PATCH`: dictamen y edición de razón son escrituras reales, y no se dispuso de una base aislada para probarlas sin alterar datos corporativos. Las verificaciones confirman el estado observado, no garantizan disponibilidad futura ni permisos de escritura.
 
+El 2 de noviembre de 2026 se añadieron pruebas unitarias aisladas para el endpoint de aprobaciones con y sin rango, incluyendo validación de fechas. Pasaron 7 pruebas, la compilación backend/frontend y lint (con 3 advertencias conocidas). Estas verificaciones no llamaron a la API corporativa para verificar conteos; no se compararon resultados reales con SOE.
+
 ## Escrituras actualmente usadas
 
 ### Dictamen
@@ -128,7 +136,7 @@ El valor `aprobado = NULL` no pasa el predicado de pendiente. El nombre es texto
 
 `PATCH /api/movimientos/:id/razon` recibe `{ "razonId": entero positivo | null }`. El repositorio primero obtiene el movimiento; si el valor no es `null`, vuelve a consultar opciones válidas para el tipo del registro y rechaza una razón no presente. Después actualiza solo `dbo.Movimientos.RazonId`, relee el registro y confirma la persistencia. `null` significa «Sin razón».
 
-Estas rutas escriben información real y actualmente no exigen autenticación/autorización. La UI no limita el acceso a gerentes.
+El middleware actual permite desde Express solo el `PATCH /api/movimientos/:id/dictamen`; los demás `PATCH`, incluida la edición de razón, responden 403. El dictamen está habilitado para todos los roles demo, pero ninguno de los roles o nombres se valida en servidor. Todo cliente que alcance el backend puede solicitar escrituras reales. No exponer fuera de un entorno local/controlado hasta implementar autenticación y autorización.
 
 ## Diagnóstico de fallos
 

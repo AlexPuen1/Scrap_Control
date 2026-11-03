@@ -151,14 +151,17 @@ La comparación es independiente de los rangos de Dashboard, Reportes y Fallas p
 |---|---|---|
 | `GET` | `/api/health` | `status`, fecha, tipo de DB, estado más reciente, modo y nombres de tabla como metadatos estáticos. |
 | `GET` | `/api/movimientos` | `{ exitoso, datos, conteo }`; rango opcional y filtros `tipoId`, `aprobado`, `razonId`, `busqueda`. |
+| `GET` | `/api/movimientos/aprobaciones` | `{ exitoso, datos: [{ nombre, aprobaciones }], total }`; siempre `aprobado = 1`, agrupado por `nvAprobadoPor`; fechas opcionales para limitar por `dtAprobado`. |
 | `GET` | `/api/movimientos/comparativa-mensual?mes=YYYY-MM` | `{ exitoso, periodos, datos }`; agregado del mes seleccionado y el anterior. |
 | `GET` | `/api/movimientos/fallas-por-linea` | `{ exitoso, periodo, datos }`; periodo reciente calculado en el servidor. |
 | `GET` | `/api/movimientos/razones?movimientoTipoId=N` | `{ exitoso, datos: [{ id, descripcion }] }`; requiere tipo entero positivo. |
 | `GET` | `/api/movimientos/:id` | `{ exitoso, datos }`; entero y respuesta 404 si no existe. |
-| `PATCH` | `/api/movimientos/:id/razon` | JSON `{ razonId: entero positivo | null }`; valida razón para el tipo del movimiento. |
+| `PATCH` | `/api/movimientos/:id/razon` | JSON `{ razonId: entero positivo | null }`; la ruta valida la razón pero el middleware actual responde 403. |
 | `PATCH` | `/api/movimientos/:id/dictamen` | JSON `{ aprobado: 1 | 4, aprobadoPor: string }`; `1` aprueba, `4` rechaza y solo modifica pendiente `0`. |
 
 Las rutas literales (`fallas-por-linea`, `razones`) y rutas de acción se registran antes de `/:id`. Al rechazar Scrap desde la interfaz, se exige un comentario y se muestra en Movimientos durante la sesión actual. No se envía a Express ni se persiste; se pierde al recargar la aplicación. En rechazo múltiple, el comentario se aplica a cada movimiento Scrap seleccionado.
+
+`GET /api/movimientos/aprobaciones` acepta ambas fechas `fechaInicio` y `fechaFin` o ninguna. Con ambas, el inicio es inclusivo y el fin exclusivo para `dtAprobado`; sin fechas, incluye todas las filas aprobadas sin límite temporal. En ambos modos el único filtro de negocio es `aprobado = 1`; no se filtra por `MovimientoTipoId`. Nombres nulos/vacíos se agrupan como «Sin responsable registrado». El `total` es la suma de todos los grupos. No es un historial de dictámenes, sino un conteo del estado actual por fila.
 
 ### Respuestas de error
 
@@ -193,7 +196,7 @@ El frontend toma IDs seleccionados que continúan visibles, solicita nombre y co
 
 ### Actualización de razón
 
-`GET /api/movimientos/razones?movimientoTipoId=N` agrupa razones con descripción no vacía desde `dbo.vw_Scrap_PowerBI`. `PATCH /api/movimientos/:id/razon` primero obtiene el movimiento; si `razonId` no es null, valida su pertenencia al catálogo disponible para ese `MovimientoTipoId`; actualiza `dbo.Movimientos.RazonId`; y relee el movimiento para confirmar. `null` guarda SQL `NULL`. La tabla `dbo.EtiquetasCI` no se usa porque no existe en la base consultada.
+`GET /api/movimientos/razones?movimientoTipoId=N` agrupa razones con descripción no vacía desde `dbo.vw_Scrap_PowerBI`. La ruta de `PATCH /api/movimientos/:id/razon` implementa validación de pertenencia al catálogo y actualización de `dbo.Movimientos.RazonId`, pero en la configuración actual queda bloqueada por el middleware (HTTP 403). La tabla `dbo.EtiquetasCI` no se usa porque no existe en la base consultada.
 
 Ambos cambios son persistentes y no tienen autenticación/autorización en el backend actual.
 
@@ -219,7 +222,7 @@ Rutas React bajo `MainLayout`:
 
 | Ruta | Página | Alcance |
 |---|---|---|
-| `/dashboard` | `DashboardPage` | Filtro de fechas, indicadores, tendencia, agrupación por `CertificacionId`, Top de razones agrupadas por descripción de catálogo y exportación. |
+| `/dashboard` | `DashboardPage` | Filtro de fechas, indicadores, tendencia, SCRAP por línea desglosado por motivo, Top de razones y exportación. Incluye gráficas por empleado/aprobador; la de aprobaciones alterna entre toda la tabla y el periodo del Dashboard. |
 | `/movimientos` | `MovimientosPage` | Tabla compacta, búsqueda, filtros, orden, paginación visual, CSV. |
 | `/movimientos/:id` | `MovimientoDetallePage` | Ficha y edición persistente de razón. Usa el movimiento presente en el contexto; no hace una solicitud de detalle por separado. |
 | `/aprobaciones` | `AprobacionesPage` | Filtros, selección, revisión, dictamen individual y múltiple. |
@@ -231,6 +234,8 @@ Rutas React bajo `MainLayout`:
 
 `ScrapContext` carga los movimientos por periodo predeterminado. Al dictaminar se recarga ese contexto; en cambio, el rango del Dashboard se guarda localmente a su pantalla hasta usar «Último mes». El Dashboard muestra conteos/cantidades por `aprobado`, pero sus KPIs no son contadores «de hoy» necesariamente: se calculan sobre el conjunto del periodo. El KPI de costos y tasas usa valores fijos/cero por falta de integración.
 
+La gráfica de aprobaciones consulta `/api/movimientos/aprobaciones` separadamente del conjunto compartido: «Todas las aprobaciones» no envía fechas; «Mes seleccionado» envía el periodo aplicado (fin exclusivo) y filtra por `dtAprobado`. Cuenta filas con `aprobado = 1`, sin filtrar tipo, y agrupa por `nvAprobadoPor`. Las barras incluyen todos los responsables y nombres vacíos. Por tanto, en modo mensual la suma puede no coincidir con una consulta SQL que filtre por `fecha_hora`; para comparar deben usarse `dtAprobado`, el mismo rango y el mismo predicado `aprobado = 1`.
+
 Movimientos y reportes se filtran sobre los resultados cargados. En Reportes, seleccionar ambas fechas hace una nueva consulta a backend para ese intervalo (fecha final inclusiva); si solo se selecciona una fecha o el intervalo es inválido, no se muestran resultados parciales. La exportación CSV aplica protección frente a fórmulas de hojas de cálculo y omite credenciales, identificadores/nombres de empleado y datos de aprobación; conserva los campos operativos del reporte. El botón «Registrar incidencia» está deshabilitado. La impresión llama a `window.print()` y no genera un PDF desde backend.
 
 Motivos/notificaciones se inicializan de datos de `frontend/src/mock/data.ts` y se persisten en claves `localStorage` `scrap_mes_motivos_ssms_v2` y `scrap_mes_notificaciones_ssms_v2`. El reinicio borra solo esos datos locales, no los movimientos SQL. Tema y varios estados pertenecen a la interfaz.
@@ -240,11 +245,25 @@ Motivos/notificaciones se inicializan de datos de `frontend/src/mock/data.ts` y 
 - `GET /api/health` es una instantánea del último estado, no un chequeo por petición. Una respuesta `online` no asegura que la próxima consulta corporativa funcione.
 - La lista de movimientos no tiene paginación de servidor. El volumen del periodo se descarga a Node y se envía al frontend; filtros de certificación/razón siguen aplicándose en memoria. En Reportes, al elegir ambas fechas se vuelve a consultar ese intervalo en el servidor (fin inclusivo); evita rangos innecesariamente amplios.
 - La API corporativa es un ejecutor SQL genérico. El backend controla sus propias llamadas, pero los permisos efectivos deben restringirse en el servicio corporativo.
-- Express limita CORS por origen, pero todavía no autentica usuarios ni autoriza roles. Las rutas de lectura y escritura siguen accesibles a cualquier cliente que alcance el servidor; la UI no es una frontera de autorización.
+- Express limita CORS por origen, pero todavía no autentica usuarios ni autoriza roles. Las rutas de lectura siguen accesibles a cualquier cliente que alcance el servidor. En el modo actual, se permiten `PATCH /api/movimientos/:id/dictamen` desde cualquier cliente que alcance el backend; los `PATCH` restantes, incluido cambio de razón, responden 403. La UI no es una frontera de autorización.
 - No publicar hasta integrar autenticación/autorización y auditoría del lado del servidor; configurar los orígenes CORS reales; revisar redes y TLS; asegurar permisos mínimos de la API; y limitar volumen con paginación/filtrado SQL si hace falta.
 - No poner secretos en `.md`, repositorio ni logs. Mantener HTTPS y certificados confiables.
 
 Para detalles de conexión y campos, consultar [Conexión a datos](BaseDeDatos/ConexionBaseDatos.md) y [Diccionario de datos](BaseDeDatos/Diccionario_Datos_Movimientos.md).
+
+La interfaz usa fuentes del sistema disponibles en el equipo y no carga tipografías desde Google Fonts ni desde otros servidores externos. Esto evita solicitudes externas de recursos de presentación y permite mostrar las pantallas sin acceso a Internet; no elimina la conexión corporativa requerida por el backend para consultar SOE.
+
+## 14. Acceso de demostración y permisos de interfaz (2 de noviembre de 2026)
+
+La pantalla de entrada ofrece seis identidades de prueba, sin contraseña: dos Administradores, dos Gerentes y dos Superintendentes. El rol se asigna a partir de la identidad de demostración elegida y se muestra en la cabecera. La sesión se conserva en `sessionStorage`.
+
+En la interfaz, Gerente y Superintendente tienen acceso a Dashboard, Movimientos, detalle de movimiento y Aprobaciones; el resto de rutas se reserva visualmente a Administrador. Administrador ve todas las secciones. Esto es únicamente navegación/experiencia de demostración: los roles no están autenticados y no se validan en backend.
+
+Los controles de aprobación individual y múltiple están habilitados para todos los roles de la interfaz demo. Los dictámenes modifican datos reales de SOE y no pueden deshacerse desde SCRAPControl. El backend solo permite `PATCH /api/movimientos/:id/dictamen`; las demás escrituras, incluido el cambio de razón, siguen bloqueadas con HTTP 403. El nombre prellenado proviene del usuario demo, pero puede editarse y no acredita identidad. Ni el login, ni los roles ni el nombre se verifican en el servidor; cualquier cliente que alcance el backend puede solicitar un dictamen. Este cambio fue autorizado para habilitar aprobaciones en la demostración, pero no vuelve seguro el servicio para una red compartida. Mantenerlo local/controlado hasta implementar y probar autenticación, permisos y auditoría en el servidor.
+
+El Dashboard muestra piezas Scrap por línea en barras apiladas por motivo. El nombre abreviado del motivo se imprime dentro de cada segmento de color; los segmentos pequeños se amplían visualmente para que el texto quepa y la referencia inferior conserva los nombres completos. Por esta expansión, la longitud de los segmentos pequeños no es proporcional a las piezas: consultar el tooltip para cantidades exactas. «TOP RAZONES SCRAP» permanece debajo a ancho completo. También muestra al Administrador demo dos gráficas: suma de `cantidad` Scrap por `Empleado` en los movimientos del periodo seleccionado y conteo de las filas de `dbo.Movimientos` con `aprobado = 1`, agrupadas por el nombre de `nvAprobadoPor`. La gráfica de aprobaciones ofrece dos modos: todas las filas aprobadas de la tabla, o el mismo periodo del Dashboard, filtrado por `dtAprobado`; no filtra por tipo de movimiento. Incluye «Sin responsable registrado» y todas las barras por nombre para que sumen el total. El nombre capturado no verifica identidad. Cuenta estado actual por fila, no historial de cambios de dictamen. La condición de visibilidad es solo frontend; el endpoint de movimientos sigue devolviendo columnas de `dbo.Movimientos` a clientes que alcancen el backend, por lo que la información no está protegida por rol. Mantener el servicio local/controlado hasta implementar autorización y minimización de datos en servidor.
+
+Las gráficas «Piezas SCRAP por línea y motivo» y «TOP RAZONES SCRAP» se presentan una debajo de la otra a ancho completo. En la primera, cada línea tiene una barra apilada por motivo y el nombre abreviado se imprime dentro de cada segmento; el tooltip y la referencia inferior adaptativa muestran la cantidad y el nombre completo. Los segmentos pequeños tienen un mínimo visual para permitir leer el motivo, por lo que su longitud no expresa con precisión las cantidades pequeñas. «Sin razón» y razones sin descripción son categorías distintas.
 
 ## 12. Verificación funcional ejecutada
 
@@ -271,3 +290,9 @@ Esta ronda de cambios de código se verificó localmente con compilación backen
 **Pendiente de capacidad:** los movimientos siguen sin paginación del lado servidor; la consulta inicial y los intervalos amplios pueden traer muchas filas. La búsqueda y ciertos filtros siguen aplicándose en memoria.
 
 **Resultado de validación de esta ronda:** builds backend y frontend exitosos; `npm test` pasó (1 prueba); lint frontend terminó sin errores y con las advertencias preexistentes en `ThemeContext.tsx` y `ScrapContext.tsx`; `git diff --check` pasó. No se creó commit. La carpeta local `Presentacion/` ya existía como no rastreada y no se modificó.
+
+## 15. Revisión de interfaces con Playwright (3 de noviembre de 2026)
+
+Se recorrieron las nueve pantallas del Administrador demo (`/dashboard`, `/movimientos`, `/movimientos/:id`, `/aprobaciones`, `/motivos`, `/fallas-por-linea`, `/reportes`, `/comparativa-mensual` y `/configuracion`) en viewport de escritorio y móvil (390 px), con fixtures locales interceptando las llamadas `/api`. También se comprobó el inicio de sesión demo, la apertura del menú móvil y que el rol Gerente redirige rutas administrativas y solo muestra Dashboard, Movimientos y Aprobaciones.
+
+No se detectaron desbordamientos horizontales de página ni excepciones de aplicación en los recorridos. No se accionaron aprobaciones, rechazos, cambios de razón ni formularios con escritura; la API fue simulada, por lo que este recorrido no valida consultas, datos reales, persistencia, exportación/impresión ni una aceptación de usuario. Se detectó una solicitud a `fonts.googleapis.com` en cada carga y se retiraron los enlaces de Google Fonts; la tipografía usa ahora fuentes del sistema. La repetición confirmó cero solicitudes externas, errores de consola y escrituras.

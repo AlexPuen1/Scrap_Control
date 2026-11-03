@@ -9,6 +9,7 @@ import {
   X,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
+import { useDemoSession } from '../context/demoSession';
 import type { Movimiento } from '../types';
 import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
@@ -37,6 +38,7 @@ const CampoDato: React.FC<{ etiqueta: string; valor: string | number | boolean |
 
 export const AprobacionesPage: React.FC = () => {
   const { movimientos, aprobarMovimiento, dictaminarMovimientos, rechazarMovimiento } = useScrap();
+  const { usuario } = useDemoSession();
   const [filtroCertificacion, setFiltroCertificacion] = useState('');
   const [busquedaSerial, setBusquedaSerial] = useState('');
   const [busquedaFechaHora, setBusquedaFechaHora] = useState('');
@@ -132,7 +134,7 @@ export const AprobacionesPage: React.FC = () => {
 
   const abrirRevision = (movimiento: Movimiento, decision: Decision) => {
     setRevision({ movimiento, decision });
-    setNombreResponsable('');
+    setNombreResponsable(usuario?.nombre ?? '');
     setComentarioRechazo('');
     setErrorDictamen(null);
   };
@@ -199,7 +201,7 @@ export const AprobacionesPage: React.FC = () => {
       </div>
 
       <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-xs text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
-        El dictamen guarda el nombre capturado en <code>nvAprobadoPor</code> y la fecha/hora del servidor en <code>dtAprobado</code>. El nombre no verifica por sí mismo la identidad del usuario.
+        Los dictámenes se guardan en SOE y no se pueden deshacer desde esta aplicación. El login y los roles son de demostración, no verifican identidad ni permisos; el nombre que captures se guardará en <code>nvAprobadoPor</code>. Confirma que tienes autorización antes de continuar.
       </div>
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
@@ -269,7 +271,7 @@ export const AprobacionesPage: React.FC = () => {
               disabled={seleccionadosVisibles.length === 0 || aprobacionMultipleEnviando}
               onClick={() => {
                 setDecisionMultiple(1);
-                setNombreResponsableMultiple('');
+                setNombreResponsableMultiple(usuario?.nombre ?? '');
                 setErrorAprobacionMultiple(null);
                 setIdsFallidos([]);
                 setModalDictamenMultiple(true);
@@ -284,7 +286,7 @@ export const AprobacionesPage: React.FC = () => {
               disabled={seleccionadosVisibles.length === 0 || aprobacionMultipleEnviando}
               onClick={() => {
                 setDecisionMultiple(4);
-                setNombreResponsableMultiple('');
+                setNombreResponsableMultiple(usuario?.nombre ?? '');
                 setComentarioRechazoMultiple('');
                 setErrorAprobacionMultiple(null);
                 setIdsFallidos([]);
@@ -419,9 +421,10 @@ export const AprobacionesPage: React.FC = () => {
             {decisionMultiple === 1
               ? 'Se aprobarán los movimientos seleccionados.'
               : 'Se rechazarán los movimientos seleccionados.'} El cambio se guardará en la base de datos y no se puede deshacer desde la aplicación.
+            {' '}La cuenta y el rol de demostración no verifican tu identidad ni autorización.
           </p>
           <label htmlFor="responsable-aprobacion-multiple" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Nombre del responsable
+            Nombre que quedará registrado como responsable (no verificado)
             <input
               id="responsable-aprobacion-multiple"
               type="text"
@@ -500,6 +503,7 @@ export const AprobacionesPage: React.FC = () => {
           </p>
           <p className="text-xs text-slate-600 dark:text-slate-300">
             Esta acción actualizará los dictámenes en la base de datos y no se puede deshacer desde la aplicación.
+            {' '}La cuenta demo y el nombre registrado no verifican identidad ni autorización.
           </p>
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
             <Button
@@ -624,7 +628,7 @@ export const AprobacionesPage: React.FC = () => {
                 Al confirmar, se actualizará el dictamen y SQL Server registrará la fecha y hora.
               </p>
               <label htmlFor="nombre-responsable" className="mb-1 mt-3 block text-xs font-medium text-slate-700 dark:text-slate-300">
-                Nombre del responsable
+                Nombre que quedará registrado como responsable (no verificado)
               </label>
               <input
                 id="nombre-responsable"

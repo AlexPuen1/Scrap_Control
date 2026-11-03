@@ -1,14 +1,16 @@
 # Registro de seguridad — SCRAPControl
 
-**Actualizado:** 2 de noviembre de 2026
+**Actualizado:** 3 de noviembre de 2026
 **Estado general:** apto únicamente para uso local/controlado; **no listo para exponerse a otros equipos ni a Internet**.
 **Alcance de esta evaluación:** revisión estática del código del repositorio y Semgrep. No es una certificación ni una auditoría exhaustiva de la infraestructura, la API corporativa o SQL Server.
 
 ## Resumen ejecutivo
 
-SCRAPControl consulta movimientos de Scrap desde SOE a través de una API corporativa y permite modificar la razón o registrar un dictamen. Esas dos operaciones escriben datos persistentes. Se encontraron controles útiles de CORS, validación de entradas, TLS hacia la API corporativa y protección de valores CSV; sin embargo, el backend **no autentica a las personas ni comprueba sus permisos**. El nombre recibido para un dictamen es texto proporcionado por el cliente, no una identidad verificada.
+SCRAPControl consulta movimientos de Scrap desde SOE a través de una API corporativa y tiene código para modificar la razón o registrar un dictamen. En el middleware actual, la edición de razón está bloqueada con 403 y los dictámenes escriben datos persistentes. Se encontraron controles útiles de CORS, validación de entradas, TLS hacia la API corporativa y protección de valores CSV; sin embargo, el backend **no autentica a las personas ni comprueba sus permisos**. El nombre recibido para un dictamen es texto proporcionado por el cliente, no una identidad verificada.
 
 Como mitigación inmediata, el backend se limitó a escuchar en `127.0.0.1`. Esto reduce el acceso desde otros equipos, pero no protege contra otros procesos o usuarios del mismo equipo y **no reemplaza autenticación ni autorización**. La integración de identidad quedó expresamente pendiente; aún se requiere un proveedor corporativo y una política de roles.
+
+**Actualización de estado (2 de noviembre de 2026):** todos los roles demo pueden aprobar o rechazar movimientos; el middleware permite `PATCH /api/movimientos/:id/dictamen` y bloquea otros `PATCH` con 403. No hay autenticación/autorización en el servidor, por lo que cualquier cliente que alcance el backend puede dictaminar y suministrar el nombre registrado. La gráfica de aprobaciones es de solo lectura y puede consultar toda la tabla o el periodo por `dtAprobado`; el endpoint agrupa filas `aprobado = 1` por `nvAprobadoPor`. No se consultó ni escribió SOE al implementar esa gráfica.
 
 | Indicador | Estado |
 |---|---|
@@ -17,7 +19,8 @@ Como mitigación inmediata, el backend se limitó a escuchar en `127.0.0.1`. Est
 | Hallazgo alto confirmado | Rutas de lectura y escritura sin autenticación/autorización. La exposición de red se mitigó limitando el listener a loopback. |
 | Autenticación y autorización por rol | Pendientes por decisión del propietario del proyecto. |
 | Pruebas ejecutadas | `npm run build`, `npm test` y Semgrep; completadas correctamente. |
-| Pruebas de penetración, navegador o escritura real en SOE | No realizadas. |
+| Pruebas de penetración o escritura real en SOE | No realizadas. |
+| Recorrido visual Playwright | Rutas y viewports probados con respuestas API simuladas; no es una auditoría de seguridad ni validación de datos reales. |
 
 ## Alcance y arquitectura relevantes
 
@@ -47,7 +50,7 @@ Navegador React → API local Express → API corporativa HTTPS
 | Health check | Solo expone disponibilidad y estado conectado/desconectado; ya no publica nombres de tablas, rutas locales o configuración SQL. |
 | Secretos locales | `.gitignore` excluye `.env`, `.env.local` y variantes locales. Esto reduce el riesgo de versionarlos, pero no demuestra que nunca se haya filtrado un secreto ni sustituye un escaneo dedicado de secretos. |
 | Exportación CSV | `frontend/src/utils/formatters.ts` usa columnas explícitas, escapa campos y antepone apóstrofo a valores que podrían interpretarse como fórmulas. Las exportaciones aún pueden contener datos operativos identificables y requieren manejo restringido. |
-| Pruebas automatizadas | `npm test` valida IDs, códigos de dictamen y que un error remoto no se revele al cliente. No cubre autenticación (aún inexistente), autorizaciones, recorridos E2E ni escrituras válidas. |
+| Pruebas automatizadas | `npm test` valida IDs, códigos de dictamen y que un error remoto no se revele al cliente. Playwright verificó la interfaz con fixtures locales; no cubre autenticación (aún inexistente), autorización de API ni escrituras válidas. |
 | Documentación | `README.md` y `Documentacion.md` advierten que no se publique el servicio sin autenticación/autorización. Este archivo centraliza el estado, los cambios y el plan pendiente. |
 
 ### Cambio de exposición de red
@@ -60,8 +63,8 @@ Severidades expresadas como prioridades de remediación; no son un resultado cer
 
 | Prioridad | Hallazgo o riesgo | Evidencia / efecto | Estado y acción necesaria |
 |---|---|---|---|
-| **Alta** | No hay autenticación ni autorización por rol en las rutas. | `backend/src/routes/movimientosRoutes.ts` monta GET y PATCH sin middleware de identidad. Clientes locales pueden leer datos e invocar cambios. `aprobadoPor` es texto controlado por el solicitante. | **Pendiente por decisión del usuario.** Elegir proveedor de identidad, validar tokens/sesión en backend, derivar al actor de la identidad verificada y exigir permisos explícitos para cada operación de escritura. |
-| **Alta** | Las escrituras son reales y no hay un control de autorización servidor. | Dictamen actualiza `aprobado`, `nvAprobadoPor` y fecha; corrección actualiza `RazonId`. El lote de dictámenes se realiza en solicitudes individuales, sin transacción de conjunto. | Restringir el uso hasta integrar autorización. Probar cambios autorizados y no autorizados en un ambiente aislado y acordar reversión/auditoría con el dueño de SOE. |
+| **Alta** | No hay autenticación ni autorización por rol en las rutas. | `backend/src/routes/movimientosRoutes.ts` monta GET y PATCH sin middleware de identidad. Clientes locales pueden leer datos e invocar cambios. `aprobadoPor` es texto controlado por el solicitante. | **Pendiente.** Elegir proveedor de identidad, validar tokens/sesión en backend, derivar al actor de la identidad verificada y exigir permisos explícitos para cada operación de escritura. |
+| **Alta** | Dictámenes reales están disponibles sin autorización de servidor. | `PATCH /api/movimientos/:id/dictamen` está permitido para todos los clientes que alcancen Express; los otros `PATCH` actualmente se bloquean con 403. El dictamen actualiza `aprobado`, `nvAprobadoPor` y `dtAprobado`; los lotes son solicitudes individuales sin transacción. | Mantener acceso solo local/controlado hasta implementar autenticación y autorización. Probar cambios autorizados/no autorizados en un ambiente aislado y acordar reversión/auditoría con el dueño de SOE. |
 | **Media** | No se observan límites de frecuencia ni paginación real en la consulta principal. | `MovimientosRepository.listar` obtiene el conjunto del periodo y aplica varios filtros en memoria; peticiones repetidas o periodos grandes pueden incrementar carga y exposición de datos. | Evaluar límites de solicitudes, límites de fechas/tamaño, paginación y filtros SQL del lado servidor. Medir carga antes de fijar umbrales. |
 | **Media** | El endpoint de salud revela metadatos de conexión y estructura. | `GET /api/health` informa motor, estado, nombres de tablas/ruta y versión. No contiene credenciales según el código revisado, pero expone detalles operativos. | Determinar si hace falta acceso público al health check; separar comprobación mínima de información administrativa y limitar detalles. |
 | **Media** | Respuestas de error pueden devolver mensajes de excepciones al cliente. | Algunos controladores serializan `error.message` en HTTP 500. Un error de la API SQL podría contener información operativa. | Revisar mensajes de producción: responder de forma genérica al cliente y registrar detalles con acceso restringido, sin registrar secretos ni datos personales. |
@@ -87,11 +90,19 @@ Los puntos marcados Media/Baja son recomendaciones basadas en la configuración 
 
 - No se añadió autenticación, proveedor de identidad, autorización por rol ni auditoría de actor: el proveedor no se había definido y el usuario pidió dejarlo pendiente.
 - No se hicieron escrituras válidas, aprobaciones ni cambios de razón en SOE; tampoco pruebas contra una base aislada.
-- No se ejecutó una prueba de penetración, análisis dinámico (DAST), fuzzing, E2E de navegador ni evaluación de red/firewall/proxy.
+- No se ejecutó una prueba de penetración, análisis dinámico (DAST), fuzzing, evaluación de red/firewall/proxy ni prueba E2E conectada al backend/SOE.
 - No se ejecutó una auditoría de dependencias ni un escaneo dedicado de secretos.
 - No se verificaron los permisos SQL efectivos, los controles de la API corporativa, la configuración productiva ni certificados de una conexión real.
 - No se hizo una revisión exhaustiva de todos los flujos de datos personales, retención, respaldos, recuperación o cumplimiento normativo.
 - No se afirmó ausencia total de vulnerabilidades: un escaneo estático sin hallazgos solo describe reglas y archivos analizados en ese momento.
+
+### Recorrido de interfaz y recursos externos (3 de noviembre de 2026)
+
+Playwright recorrió nueve pantallas administrativas en escritorio y móvil con las respuestas `/api` interceptadas por fixtures; no realizó llamadas a SOE ni escrituras. El recorrido cubrió navegación básica y desbordamiento horizontal, no acciones persistentes ni controles de seguridad de la API. Durante la inspección se observó que `frontend/index.html` solicitaba tipografías desde Google Fonts; se retiraron esos enlaces y se usa la pila de fuentes del sistema. La repetición confirmó cero solicitudes externas, errores de consola y escrituras.
+
+### Verificación posterior de cambios de aprobación (2 de noviembre de 2026)
+
+Después de esta revisión se añadieron endpoint de agregación por `aprobado = 1` y `nvAprobadoPor`, selector para todas las filas o rango de `dtAprobado`, y pruebas automatizadas del endpoint. `npm test` pasó con 7 pruebas, `npm run build` pasó y Oxlint terminó con 3 advertencias conocidas. No se conectó a SOE para comparar cifras ni se enviaron escrituras. La evidencia de Semgrep registrada arriba corresponde a la revisión indicada y **no se volvió a ejecutar** sobre estos cambios recientes. El hallazgo de falta de autorización permanece vigente.
 
 ## Semgrep: evidencia y límites
 

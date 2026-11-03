@@ -16,7 +16,7 @@ La consulta ordinaria obtiene `movimiento.*` y añade `LineaId` y `DescripcionRa
 | `CertificacionId` | `int` | No | Relación con `dbo.Certificacion.id`; se conserva en ficha, datos originales y CSV. No se muestra como columna en la lista principal. |
 | `MATNR` | `varchar(50)` | No | Número de parte principal; listado, búsqueda y reportes. |
 | `fecha_hora` | `datetime` | No | Fecha/hora del movimiento; determina periodos y orden temporal. |
-| `credencial` | `varchar(50)` | No | Se muestra en ficha técnica; no como columna de Movimientos. La búsqueda y CSV pueden incluirla. |
+| `credencial` | `varchar(50)` | No | Se muestra en ficha técnica; no como columna de Movimientos. Puede usarse en búsqueda, pero se excluye del CSV. |
 | `MovimientoTipoId` | `int` | No | Identificador del tipo; `1` se interpreta como Scrap. El nombre se resuelve con un mapa local. |
 | `cantidad` | `int` | No | Cantidad registrada; se agrega para reportes y gráficas. |
 | `salida` | `bit` | No | Indicador original, visible en algunos detalles/revisión. |
@@ -24,7 +24,7 @@ La consulta ordinaria obtiene `movimiento.*` y añade `LineaId` y `DescripcionRa
 | `EmpleadoId` | `varchar(50)` | Sí | Se conserva en datos originales/ficha de revisión; no se integra desde un directorio de empleados. |
 | `Empleado` | `varchar(250)` | Sí | Campo original; no se enriquece desde catálogo corporativo. |
 | `procesado` | `int` | Sí | Estado/campo original, sin flujo de procesamiento implementado en la app. |
-| `aprobado` | `int` | Sí | `0` pendiente; `1` aprobado; `2` rechazado; `NULL` sin dictamen/no integrado. |
+| `aprobado` | `int` | Sí | `0` pendiente; `1` aprobado; `2` procesado; `4` rechazado; `NULL` sin dictamen/no integrado. |
 | `RazonId` | `int` | Sí | Identificador de razón. La descripción se obtiene de `dbo.vw_Scrap_PowerBI`; la ficha puede editar este campo. |
 | `centro_costo` | `varchar(50)` | Sí | Campo original. No se integra con catálogo ni cálculo de costo oficial. |
 | `almacen` | `varchar(50)` | Sí | Almacén presentado en lista/ficha cuando existe. |
@@ -43,9 +43,9 @@ La consulta ordinaria obtiene `movimiento.*` y añade `LineaId` y `DescripcionRa
 
 ### Dictamen y edición
 
-La ruta individual actualiza campos del dictamen exclusivamente cuando `id` coincide y `aprobado = 0`. Para aprobar escribe 1; para rechazar escribe 2; además asigna `nvAprobadoPor` y `dtAprobado`. No modifica registros con `aprobado IS NULL`, 1 o 2. El nombre capturado no comprueba que quien lo escribió sea gerente o el empleado indicado.
+La ruta individual actualiza campos del dictamen exclusivamente cuando `id` coincide y `aprobado = 0`. Para aprobar escribe 1; para rechazar escribe 4; además asigna `nvAprobadoPor` y `dtAprobado`. No modifica registros con `aprobado IS NULL` o distinto de 0. El nombre capturado no comprueba que quien lo escribió sea gerente o el empleado indicado.
 
-La edición de razón solo escribe `RazonId`. Las opciones no son texto libre: el backend las valida contra el tipo del movimiento en `dbo.vw_Scrap_PowerBI`. El valor `null` limpia la razón. Ambas operaciones escriben datos reales y el backend no autentica usuarios.
+La edición de razón solo escribe `RazonId`. Las opciones no son texto libre: el backend las valida contra el tipo del movimiento en `dbo.vw_Scrap_PowerBI`. El valor `null` limpia la razón. Aunque el endpoint permanece en el código, el middleware actual responde 403 a esta operación. El dictamen sí escribe datos reales y el backend no autentica usuarios.
 
 ## `dbo.Certificacion`
 
@@ -90,12 +90,13 @@ El selector agrupa por `RAZONid`, ignora descripciones nulas/vacías y muestra e
 - Scrap se identifica por `MovimientoTipoId = 1`.
 - El KPI «Piezas Scrap» suma `cantidad` para tipo 1 en el conjunto cargado, no necesariamente solo el día actual.
 - Pendientes/aprobados/rechazados del Dashboard cuentan estados del periodo actual.
+- La gráfica de aprobaciones agrupa por `nvAprobadoPor` las filas con `aprobado = 1`. Su modo «Mes seleccionado» aplica el rango de fechas a `dtAprobado`; «Todas las aprobaciones» no agrega filtro temporal ni filtro por tipo de movimiento. Es un conteo de estado actual, no eventos históricos.
 - `GET /api/movimientos/fallas-por-linea` calcula su agregado en SQL y no depende del rango del Dashboard.
 - `/api/movimientos/comparativa-mensual` contrasta el mes calendario seleccionado con el anterior. Tendencia, razón y línea limitan a Scrap tipo 1; certificación incluye todos los tipos.
 - La comparación mensual resume el máximo observado por métrica y periodo en sus tarjetas; las barras distinguen visualmente mes anterior y mes seleccionado, y los valores del tooltip son blancos. El máximo no es un umbral de riesgo ni una clasificación oficial de calidad.
 - Reportes agrupa y filtra sobre movimientos ya cargados. Su fecha hasta es inclusiva en el navegador.
 - Costos se muestran como cero/locales cuando no hay fuente oficial integrada; no usarlos para contabilidad.
-- La exportación CSV usa los valores originales de la fila y puede incluir campos no visibles en la tabla, como `credencial`.
+- La exportación CSV usa columnas explícitas y excluye `credencial`, identificadores/nombres de empleado y campos del responsable del dictamen.
 
 ## Evidencia de consultas históricas
 

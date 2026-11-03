@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Request, Response } from 'express';
-import { getMovimientoById, getMovimientos, registrarDictamen } from '../src/controllers/movimientosController.js';
+import { getAprobaciones, getMovimientoById, getMovimientos, registrarDictamen } from '../src/controllers/movimientosController.js';
 import { MovimientosRepository } from '../src/repositories/movimientosRepository.js';
 
 function crearResponse() {
@@ -88,5 +88,85 @@ test('GET movimientos no revela mensajes internos de la API de datos', async () 
     });
   } finally {
     MovimientosRepository.prototype.listar = listarOriginal;
+  }
+});
+
+test('GET aprobaciones limita por dtAprobado y devuelve nombres agrupados', async () => {
+  const obtenerOriginal = MovimientosRepository.prototype.obtenerAprobacionesPorResponsable;
+  const rangos: string[][] = [];
+  MovimientosRepository.prototype.obtenerAprobacionesPorResponsable = async (inicio, fin) => {
+    rangos.push([inicio, fin]);
+    return [
+      { nombre: 'Responsable A', aprobaciones: 3 },
+      { nombre: 'Sin responsable registrado', aprobaciones: 2 },
+    ];
+  };
+
+  try {
+    const { response, estado } = crearResponse();
+    await getAprobaciones({
+      query: { fechaInicio: '2026-10-01', fechaFin: '2026-11-01' },
+    } as unknown as Request, response);
+
+    assert.equal(estado.statusCode, 200);
+    assert.deepEqual(estado.body, {
+      exitoso: true,
+      datos: [
+        { nombre: 'Responsable A', aprobaciones: 3 },
+        { nombre: 'Sin responsable registrado', aprobaciones: 2 },
+      ],
+      total: 5,
+    });
+    assert.deepEqual(rangos, [['2026-10-01', '2026-11-01']]);
+  } finally {
+    MovimientosRepository.prototype.obtenerAprobacionesPorResponsable = obtenerOriginal;
+  }
+});
+
+test('GET aprobaciones sin rango consulta todas las filas aprobadas', async () => {
+  const obtenerOriginal = MovimientosRepository.prototype.obtenerAprobacionesPorResponsable;
+  const rangos: (string | undefined)[][] = [];
+  MovimientosRepository.prototype.obtenerAprobacionesPorResponsable = async (inicio, fin) => {
+    rangos.push([inicio, fin]);
+    return [{ nombre: 'Responsable A', aprobaciones: 7 }];
+  };
+
+  try {
+    const { response, estado } = crearResponse();
+    await getAprobaciones({ query: {} } as unknown as Request, response);
+    assert.equal(estado.statusCode, 200);
+    assert.deepEqual(estado.body, {
+      exitoso: true,
+      datos: [{ nombre: 'Responsable A', aprobaciones: 7 }],
+      total: 7,
+    });
+    assert.deepEqual(rangos, [[undefined, undefined]]);
+  } finally {
+    MovimientosRepository.prototype.obtenerAprobacionesPorResponsable = obtenerOriginal;
+  }
+});
+
+test('GET aprobaciones rechaza rangos inválidos sin consultar', async () => {
+  const obtenerOriginal = MovimientosRepository.prototype.obtenerAprobacionesPorResponsable;
+  let consultas = 0;
+  MovimientosRepository.prototype.obtenerAprobacionesPorResponsable = async () => {
+    consultas += 1;
+    return [];
+  };
+
+  try {
+    for (const query of [
+      { fechaInicio: '2026-03-01' },
+      { fechaInicio: '2026-02-30', fechaFin: '2026-03-01' },
+      { fechaInicio: '2026-03-01', fechaFin: '2026-03-01' },
+      { fechaInicio: '2026-04-01', fechaFin: '2026-03-01' },
+    ]) {
+      const { response, estado } = crearResponse();
+      await getAprobaciones({ query } as unknown as Request, response);
+      assert.equal(estado.statusCode, 400);
+    }
+    assert.equal(consultas, 0);
+  } finally {
+    MovimientosRepository.prototype.obtenerAprobacionesPorResponsable = obtenerOriginal;
   }
 });

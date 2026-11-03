@@ -74,6 +74,29 @@ async function solicitarMovimientos(fechaInicio?: string, fechaFin?: string): Pr
   return body.datos.map(adaptarMovimiento);
 }
 
+async function solicitarAprobaciones(
+  fechaInicio?: string,
+  fechaFin?: string,
+): Promise<{ datos: { nombre: string; aprobaciones: number }[]; total: number }> {
+  const parametros = new URLSearchParams();
+  if (fechaInicio && fechaFin) {
+    parametros.set('fechaInicio', fechaInicio);
+    parametros.set('fechaFin', fechaFin);
+  }
+  const query = parametros.size > 0 ? `?${parametros.toString()}` : '';
+  const response = await fetch(`${API_BASE}/movimientos/aprobaciones${query}`);
+  const body = await response.json() as {
+    exitoso: boolean;
+    datos?: { nombre: string; aprobaciones: number }[];
+    total?: number;
+    mensaje?: string;
+  };
+  if (!response.ok || !body.exitoso || !body.datos || body.total === undefined) {
+    throw new Error(body.mensaje || `No se pudieron cargar las aprobaciones (HTTP ${response.status}).`);
+  }
+  return { datos: body.datos, total: body.total };
+}
+
 async function solicitarMovimiento(id: string): Promise<Movimiento> {
   const response = await fetch(`${API_BASE}/movimientos/${encodeURIComponent(id)}`);
   const body = await response.json() as { exitoso: boolean; datos?: MovimientoDB; mensaje?: string };
@@ -150,6 +173,7 @@ async function enviarActualizacionRazon(id: string, razonId: number | null): Pro
 /** El frontend consume el backend; la llamada a la API corporativa queda solo en servidor. */
 export const ScrapService = {
   obtenerMovimientos: (fechaInicio?: string, fechaFin?: string) => solicitarMovimientos(fechaInicio, fechaFin),
+  obtenerAprobaciones: (fechaInicio?: string, fechaFin?: string) => solicitarAprobaciones(fechaInicio, fechaFin),
   obtenerMovimiento: (id: string) => solicitarMovimiento(id),
 
   obtenerScrapPorLinea: () => solicitarScrapPorLinea(),

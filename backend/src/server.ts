@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { connectToDatabase } from './config/database.js';
 import movimientosRoutes from './routes/movimientosRoutes.js';
 import { getHealth } from './controllers/healthController.js';
+import { bloquearEscriturasDemo } from './middleware/demoReadOnly.js';
 
 dotenv.config();
 
@@ -33,6 +34,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json({ limit: '10kb' }));
+
+// Demo roles are frontend-only; allow only dictamen updates and block other persistent changes.
+app.use('/api/movimientos', bloquearEscriturasDemo);
 
 // Logging middleware
 app.use((req, _res, next) => {

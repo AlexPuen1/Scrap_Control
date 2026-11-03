@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   getMovimientos,
+  getAprobaciones,
   getMovimientoById,
   getScrapPorLinea,
   getRazones,
@@ -12,6 +13,7 @@ import {
 const router = Router();
 
 router.get('/', getMovimientos);
+router.get('/aprobaciones', getAprobaciones);
 router.get('/comparativa-mensual', getComparativaMensual);
 router.get('/fallas-por-linea', getScrapPorLinea);
 router.get('/razones', getRazones);
