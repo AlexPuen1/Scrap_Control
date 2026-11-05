@@ -26,7 +26,7 @@ Como mitigación inmediata, el backend se limitó a escuchar en `127.0.0.1`. Est
 
 ```text
 Navegador React → API local Express → API corporativa HTTPS
-                                  → SQL Server est04db / base SOE
+                                  → SQL Server EST02DB / base SOE
 ```
 
 - El navegador consume rutas `/api`; no se conecta directamente a SQL Server ni envía SQL.

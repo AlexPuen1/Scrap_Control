@@ -123,16 +123,17 @@ async function solicitarMovimiento(id: string): Promise<Movimiento> {
   return adaptarMovimiento(body.datos);
 }
 
-async function enviarDictamen(id: string, aprobado: 1 | 4, aprobadoPor: string): Promise<void> {
+async function enviarDictamen(id: string, aprobado: 1 | 4, aprobadoPor: string): Promise<Movimiento> {
   const response = await fetch(`${API_BASE}/movimientos/${encodeURIComponent(id)}/dictamen`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ aprobado, aprobadoPor }),
   });
-  const body = await response.json() as { exitoso: boolean; mensaje?: string };
-  if (!response.ok || !body.exitoso) {
+  const body = await response.json() as { exitoso: boolean; datos?: MovimientoDB; mensaje?: string };
+  if (!response.ok || !body.exitoso || !body.datos) {
     throw new Error(body.mensaje || `No se pudo registrar el dictamen (HTTP ${response.status}).`);
   }
+  return adaptarMovimiento(body.datos);
 }
 
 async function solicitarScrapPorLinea(): Promise<ReporteScrapLinea> {

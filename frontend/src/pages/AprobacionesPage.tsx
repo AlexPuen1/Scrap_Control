@@ -62,6 +62,7 @@ export const AprobacionesPage: React.FC = () => {
   const [errorDictamen, setErrorDictamen] = useState<string | null>(null);
 
   const pendientes = movimientos.filter((movimiento) => {
+    const esMovimientoScrap = movimiento.movimientoTipoId === 1;
     const coincideEstado = filtrosActivos.estado === ''
       || (filtrosActivos.estado === 'null' ? movimiento.aprobado === null : movimiento.aprobado === Number(filtrosActivos.estado));
     const coincideTexto = !filtrosActivos.busqueda || [
@@ -79,7 +80,7 @@ export const AprobacionesPage: React.FC = () => {
     const coincideAlmacen = !filtrosActivos.almacen || movimiento.almacen === filtrosActivos.almacen;
     const coincideFecha = (!filtrosActivos.fechaInicio || movimiento.fecha >= filtrosActivos.fechaInicio)
       && (!filtrosActivos.fechaFin || movimiento.fecha <= filtrosActivos.fechaFin);
-    return coincideEstado && coincideTexto && coincideCertificacion && coincideTipo
+    return esMovimientoScrap && coincideEstado && coincideTexto && coincideCertificacion && coincideTipo
       && coincideRazon && coincideLinea && coincideAlmacen && coincideFecha;
   });
   const idsPendientesFiltrados = pendientes
@@ -108,7 +109,9 @@ export const AprobacionesPage: React.FC = () => {
   const totalPiezas = movimientosDelPeriodo
     .filter((movimiento) => movimiento.movimientoTipoId === 1)
     .reduce((total, movimiento) => total + movimiento.cantidad, 0);
-  const conteoPendientes = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 0).length;
+  const conteoPendientes = movimientosDelPeriodo.filter(
+    (movimiento) => movimiento.movimientoTipoId === 1 && movimiento.aprobado === 0,
+  ).length;
   const conteoAprobados = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 1).length;
   const conteoRechazados = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 4).length;
 

@@ -413,6 +413,7 @@ export const MovimientosPage: React.FC = () => {
           />
         )}
       </div>
+
     </div>
   );
 };

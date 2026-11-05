@@ -63,7 +63,7 @@ El cliente comprueba `response.ok`, `exitoso` y que exista la estructura de dato
 - Reportes no solicita al backend el rango filtrado: reduce en memoria el conjunto cargado por el contexto. Por tanto no puede mostrar fechas que quedaron fuera de ese conjunto.
 - Fallas por línea es una consulta de agregado separada; no cambia con el rango del Dashboard.
 - Movimientos oculta la credencial como columna principal; el CSV también excluye credenciales y datos identificables del aprobador.
-- El nombre de línea procede de `[RapEnsambleEMM].[dbo].[Linea].Descripcion`, relacionado mediante `Certificacion.LineaId = Linea.linea`; se muestra junto al número.
+- El nombre de línea procede de `[172.19.216.32].[RapEnsambleEMM].[dbo].[PRENSAS_Cat_NombresLinea].Descripcion`, relacionado mediante `Certificacion.LineaId = IdPrensa`; se muestra junto al número.
 - Los rangos visibles de las gráficas se calculan a partir de las fechas efectivamente representadas.
 - Los colores de las series conservan su estilo habitual. Los números y valores que aparecen en los tooltips son blancos para mejorar su lectura sobre el fondo oscuro.
 

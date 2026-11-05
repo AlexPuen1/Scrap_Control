@@ -4,7 +4,7 @@
 
 Este documento describe los campos que consume o modifica la aplicación, no pretende ser el diccionario oficial del servidor. Los tipos y nulabilidad anotados se basan en la verificación previa documentada en el proyecto; confírmalos con el propietario del esquema antes de una migración. La última consulta de esquema no se repite al editar este documento.
 
-La ruta de datos es backend → API corporativa `POST /api/Utility/executeSQLCommand` → SQL Server solicitado `est04db` / base `SOE`. El navegador no consulta SQL directamente. La lista ordinaria lee `dbo.Movimientos`, relaciona certificación, obtiene el ID y nombre de línea desde `dbo.Certificacion` y `[RapEnsambleEMM].[dbo].[Linea]`, y añade la descripción de razón desde una vista. Para más detalle de conexión, consulta [`ConexionBaseDatos.md`](ConexionBaseDatos.md).
+La ruta de datos es backend → API corporativa `POST /api/Utility/executeSQLCommand` → SQL Server solicitado `EST02DB` / base `SOE`. El navegador no consulta SQL directamente. La lista ordinaria lee `dbo.Movimientos`, relaciona certificación, obtiene el ID y nombre de línea desde `dbo.Certificacion` y `[172.19.216.32].[RapEnsambleEMM].[dbo].[PRENSAS_Cat_NombresLinea]`, y añade la descripción de razón desde una vista. Para más detalle de conexión, consulta [`ConexionBaseDatos.md`](ConexionBaseDatos.md).
 
 ## `dbo.Movimientos`
 

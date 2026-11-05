@@ -109,7 +109,7 @@ export const FallasPorLineaPage: React.FC = () => {
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <p>
           La relación se obtiene de SQL Server: `Movimientos.CertificacionId` → `Certificacion.id` →
-          {' '}`Certificacion.LineaId` relacionado con `RapEnsambleEMM.dbo.Linea.linea`. El reporte incluye el mes más reciente disponible
+          {' '}`Certificacion.LineaId` relacionado con el catálogo de líneas corporativo. El reporte incluye el mes más reciente disponible
           {periodo ? ` (${periodo.fechaInicio} – ${periodo.fechaFin})` : '.'}
         </p>
       </div>

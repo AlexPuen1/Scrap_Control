@@ -25,7 +25,7 @@ React (frontend)
             └─ Express: controllers → MovimientosRepository
                  └─ database.connection.ts: HTTPS POST
                       └─ API corporativa /api/Utility/executeSQLCommand
-                           └─ SQL Server est04db / SOE
+                           └─ SQL Server EST02DB / SOE
 ```
 
 | Área | Archivos principales |
@@ -71,7 +71,7 @@ El frontend de Vite usa normalmente `http://localhost:5173`; Express escucha sol
 | Variable | Definición |
 |---|---|
 | `DB_API_BASE_URL` | Raíz HTTPS de la API, sin `/api/Utility/executeSQLCommand`. |
-| `DB_SERVER` | Nombre solicitado al servicio SQL (por defecto `est04db`). |
+| `DB_SERVER` | Nombre solicitado al servicio SQL (por defecto `EST02DB`). |
 | `DB_DATABASE` | Base solicitada (por defecto `SOE`). |
 | `DB_API_TIMEOUT` | Timeout de `fetch` en milisegundos (por defecto `20000`). |
 
@@ -85,7 +85,9 @@ El servidor carga `backend/.env`, instala CORS limitado a `CORS_ORIGINS`, parser
 SELECT DB_NAME() AS baseActual, @@SERVERNAME AS servidorActual
 ```
 
-La prueba comprueba que la base sea `SOE` y que el nombre del servidor empiece por `est04db` (la instancia observada fue `EST04DB\\QASEMM`). Si falla, se registra el error, pero Express no cierra el listener. `GET /api/health` muestra el estado de conexión más reciente y su timestamp de respuesta HTTP; no ejecuta una prueba nueva en cada llamada.
+La prueba comprueba que la base sea `SOE` y que `EST02DB` coincida con el prefijo o nombre de instancia del servidor devuelto. Las validaciones anteriores corresponden a `EST04DB` y no prueban el destino nuevo. Si falla, se registra el error, pero Express no cierra el listener. `GET /api/health` muestra el estado de conexión más reciente y su timestamp de respuesta HTTP; no ejecuta una prueba nueva en cada llamada.
+
+La conexión a `SOE` en `EST02DB` ya fue verificada con `SELECT` de solo lectura. Aunque el objeto local `[RapEnsambleEMM].[dbo].[Linea]` no está disponible, `dbo.GetList_Lineas` ya usa el catálogo enlazado `[172.19.216.32].[RapEnsambleEMM].[dbo].[PRENSAS_Cat_NombresLinea]`. El backend ahora usa esa misma fuente para resolver `LineaNombre`; los endpoints de movimientos, detalle y fallas por línea respondieron correctamente en EST02DB.
 
 El payload de salud incluye campos de tablas relacionados que se construyen como metadatos estáticos. Parte de esa lista es heredada y puede mencionar `dbo.EtiquetasCI`, que no existe en la base consultada. Para el catálogo editable, la implementación usa `dbo.vw_Scrap_PowerBI`; no tratar el listado de salud como inspección real del esquema.
 
@@ -97,7 +99,7 @@ El cliente envía `POST ${DB_API_BASE_URL}/api/Utility/executeSQLCommand`:
 
 ```json
 {
-  "server": "est04db",
+  "server": "EST02DB",
   "db": "SOE",
   "command": "SELECT ..."
 }
@@ -124,7 +126,7 @@ La lista puede recibir `fechaInicio` inclusiva y `fechaFin` exclusiva, ambas `YY
 
 `GET /api/movimientos` admite `tipoId`, `aprobado`, `razonId`, `certificacionId`, `lineaId`, `almacen` y `busqueda`, además de fechas. El SQL obtiene las filas del periodo; después `aplicarFiltros()` aplica estos criterios en Node. La búsqueda considera ID, serial, MATNR, MATNR_FG, credencial, nombre local del tipo, RazonId y almacén. Los filtros de estado aceptan `0`, `1`, `2`, `4` o `null`; `razonId=null` busca movimientos sin razón. Los parámetros numéricos se validan y el texto se limita a la longitud permitida. No hay `LIMIT`, paginación ni filtros SQL para estos criterios en el contrato actual.
 
-La lista ordena por ID descendente. El backend enriquece `MovimientoTipoNombre` mediante un mapa local, no consulta `dbo.MovimientoTipo`. El DTO añade `LineaId`, `LineaNombre` y `DescripcionRazon`; son valores derivados, no columnas físicas de `dbo.Movimientos`. `LineaNombre` se obtiene de `[RapEnsambleEMM].[dbo].[Linea]`, relacionando `Certificacion.LineaId` con `Linea.linea` y mostrando `Linea.Descripcion`; la consulta requiere acceso a esa base y tabla. La columna rotulada `Procesado` muestra el valor de `dbo.Movimientos.aprobado`, con los códigos `1` aprobado, `2` procesado y `4` rechazado; no muestra el campo SQL `procesado`, que SCRAPControl no modifica.
+La lista ordena por ID descendente. El backend enriquece `MovimientoTipoNombre` mediante un mapa local, no consulta `dbo.MovimientoTipo`. El DTO añade `LineaId`, `LineaNombre` y `DescripcionRazon`; son valores derivados, no columnas físicas de `dbo.Movimientos`. `LineaNombre` se obtiene de `[172.19.216.32].[RapEnsambleEMM].[dbo].[PRENSAS_Cat_NombresLinea]`, relacionando `Certificacion.LineaId` con `IdPrensa` y mostrando `Descripcion`. La columna rotulada `Procesado` muestra el valor de `dbo.Movimientos.aprobado`, con los códigos `1` aprobado, `2` procesado y `4` rechazado; no muestra el campo SQL `procesado`, que SCRAPControl no modifica.
 
 ### Reporte de Scrap por línea
 
@@ -132,7 +134,7 @@ La lista ordena por ID descendente. El backend enriquece `MovimientoTipoNombre` 
 
 ```text
 Movimientos.CertificacionId → Certificacion.id → Certificacion.LineaId
-Certificacion.LineaId → [RapEnsambleEMM].[dbo].[Linea].linea → Linea.Descripcion
+Certificacion.LineaId → [172.19.216.32].[RapEnsambleEMM].[dbo].[PRENSAS_Cat_NombresLinea].IdPrensa → Descripcion
 ```
 
 La salida contiene `periodo` (`fechaInicio`, `fechaFin`) y `datos` (`lineaId`, `lineaNombre`, `movimientos`, `piezasScrap`). `COUNT_BIG(*)` calcula movimientos y `SUM(cantidad)` piezas. La unión a certificación y al catálogo de líneas es `LEFT JOIN`, por lo que valores sin correspondencia pueden aparecer con nombre vacío o `lineaId = null`. Esta consulta no usa el periodo del Dashboard ni un filtro de usuario. La interfaz incluye el periodo y usa barras horizontales con el nombre de línea.
@@ -210,7 +212,7 @@ El repositorio consulta `movimiento.*`, más `LineaId` y `DescripcionRazon` deri
 
 ### `dbo.Certificacion`
 
-Se usa la relación `Certificacion.id` y `Certificacion.LineaId`. El nombre se obtiene desde `[RapEnsambleEMM].[dbo].[Linea]`, donde `Linea.linea` corresponde al ID de línea y `Linea.Descripcion` es el nombre mostrado en Movimientos, Aprobaciones y Fallas por línea.
+Se usa la relación `Certificacion.id` y `Certificacion.LineaId`. El nombre se obtiene desde `[172.19.216.32].[RapEnsambleEMM].[dbo].[PRENSAS_Cat_NombresLinea]`, donde `IdPrensa` corresponde al ID de línea y `Descripcion` es el nombre mostrado en Movimientos, Aprobaciones y Fallas por línea.
 
 ### Vista `dbo.vw_Scrap_PowerBI`
 
@@ -278,7 +280,9 @@ Las gráficas «Piezas SCRAP por línea y motivo» y «TOP RAZONES SCRAP» se pr
 
 ## 12. Verificación funcional ejecutada
 
-El 28 de octubre de 2026 se ejecutaron compilación backend/frontend, `npm test`, lint y pruebas HTTP contra el backend local configurado para usar la API SQL corporativa. La prueba independiente de conexión validó la base `SOE` y el prefijo de servidor `est04db`. Lecturas: `GET /api/health` respondió 200 y conectado; `/api/movimientos` respondió 200 con 2,894 filas; `/fallas-por-linea`, 200 con 4 grupos; `/razones?movimientoTipoId=1`, 200 con 57 opciones; la comparación de mayo de 2026, 200 con 805 filas agregadas; octubre respondió 200 sin agregados; y un detalle elegido de la lista respondió 200. Un intervalo válido sin filas regresó 200 y cero registros.
+El 28 de octubre de 2026 se ejecutaron compilación backend/frontend, `npm test`, lint y pruebas HTTP contra el backend local configurado para usar la API SQL corporativa. La prueba independiente de conexión validó la base `SOE` y el prefijo de servidor `est04db`. Lecturas: `GET /api/health` respondió 200 y conectado; `/api/movimientos` respondió 200 con 2,894 filas; `/fallas-por-linea`, 200 con 4 grupos; `/razones?movimientoTipoId=1`, 200 con 57 opciones; la comparación de mayo de 2026, 200 con 805 filas agregadas; octubre respondió 200 sin agregados; y un detalle elegido de la lista respondió 200. Un intervalo válido sin filas regresó 200 y cero registros. **Es evidencia histórica de EST04DB, no del destino actual.**
+
+En la migración a EST02DB, `npm run test:db` pasó y confirmó `SOE` en `ESTMS02DB\EST02DB`. Las lecturas directas encontraron 92,547 movimientos y 76,132 certificaciones. Aprobaciones (509 registros agrupados en 3 responsables), razones (59 opciones) y comparación de octubre de 2026 (2,931 filas agregadas) respondieron 200. Inicialmente la lista y la gráfica por línea fallaron por el catálogo local inexistente; al sustituirlo por la fuente enlazada ya usada por `dbo.GetList_Lineas`, movimientos respondió 200 con 5,364 filas, el detalle respondió 200 con `LineaId` y nombre, y fallas por línea respondió 200 con 50 grupos. Los 5,364 movimientos del periodo tuvieron nombre de línea. No se hicieron escrituras.
 
 Se comprobó `npm test` (prueba de validación de IDs), además de casos HTTP inválidos de fechas, mes, ID y cuerpos de dictamen/razón; se rechazaron con 400 antes de escribir. La prueba detectó que `GET /api/movimientos/:id` aceptaba prefijos numéricos seguidos de texto por el uso de `parseInt`; se cambió a validación de ID positivo completo y seguro, y después se confirmó que un ID malformado y cero responden 400. No se probó una escritura válida ni dictamen individual/múltiple contra la base real. La interfaz compila, pero esos cambios persistentes requieren una base de pruebas aislada para validar el ciclo completo sin alterar movimientos corporativos. No hay navegador/framework E2E instalado: no se automatizaron interacciones visuales, CSV ni impresión. El lint completo terminó con advertencias en los contextos preexistentes `ScrapContext.tsx` y `ThemeContext.tsx`, no en las páginas modificadas.
 

@@ -6,7 +6,7 @@ const databaseDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.ur
 dotenv.config({ path: path.join(databaseDirectory, '.env') });
 
 const apiBaseUrl = (process.env.DB_API_BASE_URL || 'https://est02des.magna.global/est_api').replace(/\/+$/, '');
-const servidor = process.env.DB_SERVER || 'est04db';
+const servidor = process.env.DB_SERVER || 'EST02DB';
 const baseDeDatos = process.env.DB_DATABASE || 'SOE';
 const tiempoConsulta = Number.parseInt(process.env.DB_API_TIMEOUT || '20000', 10);
 
@@ -103,7 +103,10 @@ export async function probarConexionSQLServer(): Promise<{ exitoso: boolean; bas
     if (resultado?.baseActual !== baseDeDatos) {
       throw new Error(`La API abrió "${resultado?.baseActual || 'una base desconocida'}", pero se esperaba "${baseDeDatos}".`);
     }
-    if (!resultado.servidorActual.toLocaleLowerCase().startsWith(servidor.toLocaleLowerCase())) {
+    const servidorActual = resultado.servidorActual.toLocaleLowerCase();
+    const servidorEsperado = servidor.toLocaleLowerCase();
+    const instanciaActual = servidorActual.split('\\').at(-1);
+    if (!servidorActual.startsWith(servidorEsperado) && instanciaActual !== servidorEsperado) {
       throw new Error(`La API conectó al servidor "${resultado.servidorActual}", pero se esperaba "${servidor}".`);
     }
 

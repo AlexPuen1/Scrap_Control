@@ -9,7 +9,7 @@ POST {DB_API_BASE_URL}/api/Utility/executeSQLCommand
 Body: { server, db, command }
 ```
 
-Configuración de referencia: servidor `est04db`, base `SOE`, API de desarrollo `https://est02des.magna.global/est_api`. La API responde ejecutando la instrucción SQL. El mecanismo de autenticación y la identidad SQL interna del servicio no se describen en Swagger ni se pueden inferir de este backend; deben confirmarse con el equipo propietario.
+Configuración actual: servidor solicitado `EST02DB`, base `SOE`, API `https://est02des.magna.global/est_api`. La API responde ejecutando la instrucción SQL. El mecanismo de autenticación y la identidad SQL interna del servicio no se describen en Swagger ni se pueden inferir de este backend; deben confirmarse con el equipo propietario. Las pruebas históricas de este documento usaron `EST04DB`; no demuestran por sí mismas la conectividad ni la paridad de esquema de `EST02DB`.
 
 El endpoint remoto acepta SQL genérico. SCRAPControl genera SQL en el backend y no permite que el navegador envíe comandos. Las lecturas se limitan localmente a una instrucción que inicia con `SELECT`; existen operaciones específicas de escritura para dictamen y razón, pero el middleware Express actual solo permite el PATCH de dictamen y bloquea los demás con 403. Esta protección no limita por sí sola los permisos de la API remota.
 
@@ -23,7 +23,7 @@ Frontend React
                  └─ MovimientosRepository: compone consulta
                       └─ database.connection.ts
                            └─ HTTPS POST API corporativa
-                                └─ SQL Server est04db / SOE
+                                └─ SQL Server EST02DB / SOE
 ```
 
 El navegador nunca recibe `DB_API_BASE_URL`, `DB_SERVER`, `DB_DATABASE` o el texto SQL corporativo. Durante desarrollo, Vite reenvía `/api` a Express en `127.0.0.1:3001`. En producción el proxy del servidor debe proporcionar el mismo encaminamiento.
@@ -35,7 +35,7 @@ El cliente encuentra el directorio `BaseDeDatos` relativo a la ubicación del m�
 | Variable | Valor predeterminado | Descripción |
 |---|---|---|
 | `DB_API_BASE_URL` | `https://est02des.magna.global/est_api` | URL raíz HTTPS, se eliminan barras finales. |
-| `DB_SERVER` | `est04db` | Servidor solicitado a la API. |
+| `DB_SERVER` | `EST02DB` | Servidor solicitado a la API. |
 | `DB_DATABASE` | `SOE` | Base solicitada. |
 | `DB_API_TIMEOUT` | `20000` | Timeout de fetch, milisegundos. |
 
@@ -46,7 +46,7 @@ No añadir usuario o contraseña SQL a ese archivo. `.env` debe mantenerse fuera
 1. `backend/src/server.ts` carga `backend/.env`, configura middleware y las rutas Express.
 2. El listener empieza a escuchar en el puerto `PORT`.
 3. Después se ejecuta `connectToDatabase()`, que llama a la API con `SELECT DB_NAME() AS baseActual, @@SERVERNAME AS servidorActual`.
-4. Se comprueba que la base devuelta coincide exactamente con `SOE` y el nombre del servidor empieza por el valor configurado (`est04db`).
+4. Se comprueba que la base devuelta coincide exactamente con `SOE` y que el valor configurado (`EST02DB`) coincide con el prefijo del servidor SQL o con su nombre de instancia.
 5. Un error se registra y deja la bandera de conexión en falso; el servidor HTTP sigue levantado.
 
 `GET /api/health` devuelve el indicador más reciente guardado por el cliente de conexión. No ejecuta SQL al consultarlo. El payload incluye nombres de tablas configurados como metadatos estáticos; puede contener referencias heredadas (por ejemplo, `dbo.EtiquetasCI`) que no reflejan el esquema activo. Las consultas efectivas de razón usan `dbo.vw_Scrap_PowerBI`.
@@ -72,13 +72,21 @@ SELECT DB_NAME() AS baseActual, @@SERVERNAME AS servidorActual
 
 La prueba no lee `dbo.Movimientos`, no consulta datos personales y no escribe. Salida de éxito significa que la API respondió, ejecutó la consulta y que base/servidor coincidieron con la configuración en ese momento. No verifica permisos de negocio, identidad SQL efectiva, otras rutas o conectividad de otra máquina.
 
+## Estado de la migración a EST02DB
+
+La comprobación de conexión de solo lectura respondió correctamente para `SOE`; SQL informó `ESTMS02DB\EST02DB`, cuyo nombre de instancia coincide con el servidor solicitado `EST02DB`. Las consultas directas de conteo también leyeron `dbo.Movimientos` (92,547 filas; fecha máxima observada `2026-11-05 09:06:19.593`) y `dbo.Certificacion` (76,132 filas). Aprobaciones, razones y comparación mensual respondieron correctamente en pruebas HTTP locales, sin imprimir datos personales.
+
+El objeto local `[RapEnsambleEMM].[dbo].[Linea]` no está en ese servidor; la inspección encontró que el procedimiento existente `dbo.GetList_Lineas` usa el catálogo enlazado `[172.19.216.32].[RapEnsambleEMM].[dbo].[PRENSAS_Cat_NombresLinea]`. Se comprobó que sus 171 IDs no tienen duplicados y que las 5,364 filas del periodo predeterminado de movimientos tienen una línea con nombre. Movimientos, detalle y fallas por línea ya respondieron correctamente al adaptar el `JOIN` a ese catálogo. Esta equivalencia se apoya en el procedimiento de línea existente en `SOE`; su disponibilidad depende del linked server.
+
+El backend actual no envía usuario/contraseña ni un encabezado `Authorization` a la API corporativa. Las credenciales compartidas no se incorporaron ni utilizaron; para la ruta existente, la API ejecuta con la identidad y permisos que administre su propietario. No guardar esas credenciales en `.env`, código o documentación sin un mecanismo de autenticación formalmente aprobado.
+
 ## Contrato de la llamada HTTP
 
 El cliente hace `POST` con `Content-Type: application/json` al recurso corporativo y el cuerpo:
 
 ```json
 {
-  "server": "est04db",
+  "server": "EST02DB",
   "db": "SOE",
   "command": "SELECT ..."
 }

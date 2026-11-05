@@ -72,6 +72,67 @@ test('dictamen usa 4 para rechazo y rechaza el código 2', async () => {
   }
 });
 
+test('dictamen repetido con el mismo estado y responsable es idempotente', async () => {
+  const obtenerPorIdOriginal = MovimientosRepository.prototype.obtenerPorId;
+  const obtenerDictaminado = { aprobado: 1, nvAprobadoPor: 'Oscar Moreno' };
+  MovimientosRepository.prototype.obtenerPorId = async () => obtenerDictaminado as Awaited<
+    ReturnType<MovimientosRepository['obtenerPorId']>
+  >;
+
+  try {
+    const resultado = await new MovimientosRepository().registrarDictamen(94068, 1, 'Oscar Moreno');
+    assert.equal(resultado.estado, 'actualizado');
+    if (resultado.estado === 'actualizado') {
+      assert.equal(resultado.movimiento.aprobado, 1);
+      assert.equal(resultado.movimiento.nvAprobadoPor, 'Oscar Moreno');
+    }
+  } finally {
+    MovimientosRepository.prototype.obtenerPorId = obtenerPorIdOriginal;
+  }
+});
+
+test('dictamen reconoce el estado procesado que sigue a una aprobación exitosa', async () => {
+  const fetchOriginal = globalThis.fetch;
+  let aprobado = 0;
+  let nvAprobadoPor: string | null = null;
+  let dtAprobado: string | null = null;
+  let escrituras = 0;
+  globalThis.fetch = async (_input, init) => {
+    const { command } = JSON.parse(String(init?.body)) as { command: string };
+    if (/^\s*UPDATE\b/i.test(command)) {
+      escrituras += 1;
+      aprobado = 2;
+      nvAprobadoPor = 'Oscar Moreno';
+      dtAprobado = '2026-11-05T10:00:00';
+      return new Response(JSON.stringify({ success: true, affectedRows: 1 }), { status: 200 });
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      rows: [{
+        id: 94068,
+        MovimientoTipoId: 1,
+        aprobado,
+        nvAprobadoPor,
+        dtAprobado,
+      }],
+    }), { status: 200 });
+  };
+
+  try {
+    const resultado = await new MovimientosRepository().registrarDictamen(94068, 1, 'Oscar Moreno');
+    assert.equal(resultado.estado, 'actualizado');
+    assert.equal(escrituras, 1);
+    if (resultado.estado === 'actualizado') {
+      assert.equal(resultado.movimiento.aprobado, 2);
+      assert.equal(resultado.movimiento.nvAprobadoPor, 'Oscar Moreno');
+      assert.equal(resultado.movimiento.dtAprobado, '2026-11-05T10:00:00');
+    }
+  } finally {
+    globalThis.fetch = fetchOriginal;
+  }
+});
+
 test('GET movimientos no revela mensajes internos de la API de datos', async () => {
   const listarOriginal = MovimientosRepository.prototype.listar;
   MovimientosRepository.prototype.listar = async () => {

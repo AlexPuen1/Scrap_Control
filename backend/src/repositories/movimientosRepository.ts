@@ -119,8 +119,8 @@ export class MovimientosRepository {
       FROM dbo.Movimientos AS movimiento
       LEFT JOIN dbo.Certificacion AS certificacion
         ON certificacion.id = movimiento.CertificacionId
-      LEFT JOIN [RapEnsambleEMM].[dbo].[Linea] AS linea
-        ON linea.linea = certificacion.LineaId
+      LEFT JOIN [172.19.216.32].[RapEnsambleEMM].[dbo].[PRENSAS_Cat_NombresLinea] AS linea
+        ON linea.IdPrensa = certificacion.LineaId
       WHERE movimiento.fecha_hora >= '${periodo.fechaInicio}'
         AND movimiento.fecha_hora < DATEADD(DAY, 1, CONVERT(date, '${periodo.fechaFin}', 23))
         AND movimiento.MovimientoTipoId = 1
@@ -237,8 +237,8 @@ export class MovimientosRepository {
        FROM dbo.Movimientos AS movimiento
        LEFT JOIN dbo.Certificacion AS certificacion
          ON certificacion.id = movimiento.CertificacionId
-       LEFT JOIN [RapEnsambleEMM].[dbo].[Linea] AS linea
-         ON linea.linea = certificacion.LineaId
+       LEFT JOIN [172.19.216.32].[RapEnsambleEMM].[dbo].[PRENSAS_Cat_NombresLinea] AS linea
+         ON linea.IdPrensa = certificacion.LineaId
        ${filtros.fechaInicio && filtros.fechaFin ? '' : `
        CROSS JOIN (
          SELECT MAX(fecha_hora) AS fechaMaxima
@@ -264,8 +264,8 @@ export class MovimientosRepository {
       FROM dbo.Movimientos AS movimiento
       LEFT JOIN dbo.Certificacion AS certificacion
         ON certificacion.id = movimiento.CertificacionId
-      LEFT JOIN [RapEnsambleEMM].[dbo].[Linea] AS linea
-        ON linea.linea = certificacion.LineaId
+      LEFT JOIN [172.19.216.32].[RapEnsambleEMM].[dbo].[PRENSAS_Cat_NombresLinea] AS linea
+        ON linea.IdPrensa = certificacion.LineaId
       WHERE movimiento.[id] = ${id}
     `);
     const movimiento = resultado[0];
@@ -304,15 +304,33 @@ export class MovimientosRepository {
     | { estado: 'no-encontrado' }
     | { estado: 'ya-dictaminado' }
   > {
-    const filasAfectadas = await actualizarDictamenSQL(id, aprobado, aprobadoPor);
+    const movimientoActual = await this.obtenerPorId(id);
+    if (!movimientoActual) return { estado: 'no-encontrado' };
+
+    const dictamenCoincide = (movimiento: MovimientoDetalleDTO) =>
+      movimiento.nvAprobadoPor === aprobadoPor
+      && (movimiento.aprobado === aprobado
+        || (aprobado === 1 && movimiento.aprobado === 2 && movimiento.dtAprobado != null));
+    if (dictamenCoincide(movimientoActual)) return { estado: 'actualizado', movimiento: movimientoActual };
+    if (movimientoActual.aprobado !== 0) return { estado: 'ya-dictaminado' };
+
+    let filasAfectadas: number;
+    try {
+      filasAfectadas = await actualizarDictamenSQL(id, aprobado, aprobadoPor);
+    } catch (error) {
+      try {
+        const confirmado = await this.obtenerPorId(id);
+        if (confirmado && dictamenCoincide(confirmado)) return { estado: 'actualizado', movimiento: confirmado };
+      } catch {
+        // Keep the write error if a follow-up read cannot establish the persisted state.
+      }
+      throw error;
+    }
+
     const movimiento = await this.obtenerPorId(id);
     if (!movimiento) return { estado: 'no-encontrado' };
 
-    if (filasAfectadas === 0) return { estado: 'ya-dictaminado' };
-    if (filasAfectadas < 0 && (movimiento.aprobado !== aprobado || movimiento.nvAprobadoPor !== aprobadoPor)) {
-      return { estado: 'ya-dictaminado' };
-    }
-    return movimiento.aprobado === aprobado
+    return dictamenCoincide(movimiento)
       ? { estado: 'actualizado', movimiento }
       : { estado: 'ya-dictaminado' };
   }

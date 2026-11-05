@@ -155,10 +155,39 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const guardarDictamen = async (id: string, decision: 1 | 4, aprobadoPor: string) => {
+    try {
+      return decision === 1
+        ? await ScrapService.aprobarMovimiento(id, aprobadoPor)
+        : await ScrapService.rechazarMovimiento(id, aprobadoPor);
+    } catch (error) {
+      try {
+        const movimientoConfirmado = await ScrapService.obtenerMovimiento(id);
+        const estadoConfirmado = movimientoConfirmado.aprobado === decision
+          || (decision === 1 && movimientoConfirmado.aprobado === 2 && Boolean(movimientoConfirmado.dtAprobado));
+        if (estadoConfirmado
+          && movimientoConfirmado.nvAprobadoPor === aprobadoPor.trim()) {
+          return movimientoConfirmado;
+        }
+      } catch {
+        // Preserve the original dictamen error when the state cannot be verified.
+      }
+      throw error;
+    }
+  };
+
+  const aplicarDictamenConfirmado = (actualizado: Movimiento) => {
+    setMovimientos((actuales) => actuales.map((movimiento) =>
+      movimiento.id === actualizado.id
+        ? { ...actualizado, comentarioRechazo: comentariosRechazoRef.current[actualizado.id] }
+        : movimiento,
+    ));
+  };
+
   const aprobarMovimiento = async (id: string, aprobadoPor: string) => {
-    await ScrapService.aprobarMovimiento(id, aprobadoPor);
+    const actualizado = await guardarDictamen(id, 1, aprobadoPor);
+    aplicarDictamenConfirmado(actualizado);
     agregarToast('success', 'Movimiento aprobado', `El dictamen del movimiento ${id} se guardó en dbo.Movimientos.`);
-    recargarMovimientos();
   };
 
   const registrarComentarioRechazoLocal = (id: string, comentario: string) => {
@@ -186,9 +215,8 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     for (const id of ids) {
       try {
-        if (decision === 1) await ScrapService.aprobarMovimiento(id, aprobadoPor);
-        else {
-          await ScrapService.rechazarMovimiento(id, aprobadoPor);
+        const actualizado = await guardarDictamen(id, decision, aprobadoPor);
+        if (decision === 4) {
           if (
             movimientos.some((movimiento) => movimiento.id === id && movimiento.movimientoTipoId === 1)
             && comentarioRechazo.trim()
@@ -196,6 +224,7 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             registrarComentarioRechazoLocal(id, comentarioRechazo.trim());
           }
         }
+        aplicarDictamenConfirmado(actualizado);
         dictaminados.push(id);
       } catch (error) {
         fallidos.push({
@@ -232,8 +261,9 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (esScrap && !comentarioRechazo.trim()) {
       throw new Error('El comentario es obligatorio para rechazar Scrap.');
     }
-    await ScrapService.rechazarMovimiento(id, aprobadoPor);
+    const actualizado = await guardarDictamen(id, 4, aprobadoPor);
     if (esScrap) registrarComentarioRechazoLocal(id, comentarioRechazo.trim());
+    aplicarDictamenConfirmado(actualizado);
     agregarToast(
       'success',
       'Movimiento rechazado',
@@ -241,7 +271,6 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ? `El dictamen del movimiento ${id} se guardó en dbo.Movimientos. El comentario solo está disponible durante esta sesión.`
         : `El dictamen del movimiento ${id} se guardó en dbo.Movimientos.`,
     );
-    recargarMovimientos();
   };
 
   const actualizarRazonMovimiento = async (id: string, razonId: number | null) => {
@@ -295,7 +324,7 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const scrapMovs = movimientos.filter((m) => m.movimientoTipoId === 1 || m.movimientoTipo === 'Scrap');
     const scrapHoyPzas = scrapMovs.reduce((sum, m) => sum + m.cantidad, 0);
     const scrapHoyCosto = 0;
-    const pendientesAprobar = movimientos.filter((m) => m.aprobado === 0 || m.estatus === 'Pendiente').length;
+    const pendientesAprobar = movimientos.filter((m) => m.movimientoTipoId === 1 && m.aprobado === 0).length;
     const aprobadosHoy = movimientos.filter((m) => m.aprobado === 1 || m.estatus === 'Aprobado').length;
     const rechazadosHoy = movimientos.filter((m) => m.aprobado === 4 || m.estatus === 'Rechazado').length;
 
