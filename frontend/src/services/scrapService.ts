@@ -158,7 +158,7 @@ async function solicitarUsuarioAutenticado(): Promise<UsuarioAutenticado> {
     mensaje?: string;
   };
   if (!response.ok || !body.exitoso || !body.usuario) {
-    throw new Error(body.mensaje || `No se pudo verificar la cuenta de Windows (HTTP ${response.status}).`);
+    throw new Error(body.mensaje || `No se pudo verificar la cuenta (HTTP ${response.status}).`);
   }
   return body.usuario;
 }
@@ -173,15 +173,6 @@ async function enviarCredenciales(usuario: string, contrasena: string): Promise<
   const body = await response.json() as { exitoso: boolean; usuario?: UsuarioAutenticado; mensaje?: string };
   if (!response.ok || !body.exitoso || !body.usuario) {
     throw new Error(body.mensaje || `No se pudo iniciar sesión (HTTP ${response.status}).`);
-  }
-  return body.usuario;
-}
-
-async function iniciarSesionWindows(): Promise<UsuarioAutenticado> {
-  const response = await fetch(`${API_BASE}/auth/windows`, { credentials: 'include' });
-  const body = await response.json() as { exitoso: boolean; usuario?: UsuarioAutenticado; mensaje?: string };
-  if (!response.ok || !body.exitoso || !body.usuario) {
-    throw new Error(body.mensaje || `No se pudo iniciar sesión con Windows (HTTP ${response.status}).`);
   }
   return body.usuario;
 }
@@ -298,7 +289,6 @@ async function enviarActualizacionRazon(id: string, razonId: number | null): Pro
 export const ScrapService = {
   obtenerUsuarioAutenticado: () => solicitarUsuarioAutenticado(),
   iniciarSesion: (usuario: string, contrasena: string) => enviarCredenciales(usuario, contrasena),
-  iniciarSesionWindows: () => iniciarSesionWindows(),
   cerrarSesion: () => cerrarSesion(),
   obtenerMovimientos: (fechaInicio?: string, fechaFin?: string, filtros?: FiltrosBusquedaMovimientos) =>
     solicitarMovimientos(fechaInicio, fechaFin, filtros),

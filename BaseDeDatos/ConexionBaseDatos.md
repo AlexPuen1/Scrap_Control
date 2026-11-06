@@ -2,7 +2,7 @@
 
 ## Resumen
 
-El backend no crea una conexión SQL Server con ODBC ni utiliza directamente la identidad Windows para autenticar la API de datos. SCRAPControl valida cuentas locales mediante hashes scrypt y también admite Windows Authentication de Administrador mediante IIS; por separado, Node realiza peticiones HTTPS a la API corporativa:
+El backend no crea una conexión SQL Server con ODBC ni utiliza directamente la identidad Windows para autenticar la API de datos. SCRAPControl valida el correo y la contraseña mediante `ad_mailVal`; las credenciales se reenvían desde Express por HTTPS y no se almacenan localmente. Por separado, Node realiza peticiones HTTPS a la API de datos:
 
 ```text
 POST {DB_API_BASE_URL}/api/Utility/executeSQLCommand
@@ -11,15 +11,14 @@ Body: { server, db, command }
 
 Configuración actual: servidor solicitado `EST02DB`, base `SOE`, API `https://est02des.magna.global/est_api`. La API responde ejecutando la instrucción SQL. El mecanismo de autenticación y la identidad SQL interna del servicio no se describen en Swagger ni se pueden inferir de este backend; deben confirmarse con el equipo propietario. Las pruebas históricas de este documento usaron `EST04DB`; no demuestran por sí mismas la conectividad ni la paridad de esquema de `EST02DB`.
 
-El endpoint remoto acepta SQL genérico. SCRAPControl genera SQL en el backend y no permite que el navegador envíe comandos. Las lecturas se limitan localmente a una instrucción que inicia con `SELECT`; la API recibe solicitudes de precio, agregaciones y movimientos solo después de autenticar la sesión. La edición de razón es exclusiva de Administrador; Gerente, Superintendente y Administrador pueden dictaminar. Esta protección no limita por sí sola los permisos de la API remota.
+El endpoint remoto acepta SQL genérico. SCRAPControl genera SQL en el backend y no permite que el navegador envíe comandos. Las lecturas se limitan localmente a una instrucción que inicia con `SELECT`; la API recibe solicitudes de precio, agregaciones y movimientos solo después de autenticar la sesión. La edición de razón es exclusiva de Administrador; Gerente y Administrador pueden dictaminar. Esta protección no limita por sí sola los permisos de la API remota.
 
 ## Recorrido de extremo a extremo
 
 ```text
 Frontend React
   └─ GET/PATCH /api/... (JSON)
-       └─ IIS (proxy HTTPS; Windows Authentication solo para /api/auth/windows)
-            └─ Express local
+       └─ Express local
             └─ Controller: valida parámetros
                  └─ MovimientosRepository: compone consulta
                       └─ database.connection.ts
@@ -27,7 +26,7 @@ Frontend React
                                 └─ SQL Server EST02DB / SOE
 ```
 
-El navegador nunca recibe `DB_API_BASE_URL`, `DB_SERVER`, `DB_DATABASE` o el texto SQL corporativo. Durante desarrollo, Vite reenvía `/api` a Express en `127.0.0.1:3001`. En producción el proxy del servidor debe proporcionar el mismo encaminamiento.
+El navegador nunca recibe `DB_API_BASE_URL`, `DB_SERVER`, `DB_DATABASE` ni el texto SQL corporativo. El backend también valida el login con `https://estms01ia.magna.global/node-red/ad_mailVal`. Durante desarrollo, Vite reenvía `/api` a Express en `127.0.0.1:4009`; en producción el proxy debe proporcionar el mismo encaminamiento y HTTPS.
 
 ## Configuración
 
@@ -39,14 +38,10 @@ El cliente encuentra el directorio `BaseDeDatos` relativo a la ubicación del m�
 | `DB_SERVER` | `EST02DB` | Servidor solicitado a la API. |
 | `DB_DATABASE` | `SOE` | Base solicitada. |
 | `DB_API_TIMEOUT` | `20000` | Timeout de fetch, milisegundos. |
-| `AUTH_MANAGER_USERNAME` | Sin valor versionado; se configura en `.env` local | Usuario local de Gerente. La contraseña se configura solo como hash scrypt. |
-| `AUTH_SUPERINTENDENTE_USERNAME` | Sin valor versionado; se configura en `.env` local | Usuario local de Superintendente. La contraseña se configura solo como hash scrypt. |
-| `AUTH_ADMIN_USERNAME` | Sin valor predeterminado | Usuario local opcional de Administrador; Windows Authentication permanece como alternativa. |
+| `AUTH_ADMIN_EMAIL` | Se configura en `.env` local | Correo devuelto por la API de autenticación que recibe rol Administrador; el resto de cuentas válidas recibe rol Gerente. |
 | `AUTH_SESSION_SECRET` | Sin valor predeterminado | Secreto aleatorio de al menos 32 bytes para cookies firmadas. |
-| `WINDOWS_ADMIN_USERS` | Sin valor versionado; se configura en `.env` local | Cuentas Windows/UPN autorizadas como Administrador. |
-| `WINDOWS_AUTH_PROXY_KEY` | Sin valor predeterminado | Secreto aleatorio compartido con IIS para la ruta de Windows. |
 
-No añadir usuario o contraseña SQL a ese archivo. Las contraseñas de SCRAPControl tampoco deben almacenarse en texto claro: configurar sales y hashes scrypt en el `.env` privado. `.env` debe mantenerse fuera del control de versiones; compartir solo valores no secretos aprobados. `backend/.env` configura por separado `PORT` (3001 por defecto). `VITE_API_BASE_URL` controla la URL local del cliente frontend, no la URL de la API SQL. Configurar IIS como único proxy y no exponer Express a la red. Ver [autenticación híbrida en IIS](../IIS-Windows-Authentication.md).
+No añadir usuario o contraseña SQL a ese archivo. Las contraseñas de SCRAPControl no se guardan en él: se envían a `ad_mailVal` por HTTPS para validación. `AUTH_SESSION_SECRET` y `AUTH_ADMIN_EMAIL` son configuración local; el primero es secreto y el archivo debe mantenerse fuera del control de versiones. `backend/.env` configura por separado `PORT` (4009 por defecto). `VITE_API_BASE_URL` controla la URL local del cliente frontend, no la URL de la API SQL. Ver [autenticación corporativa](../Autenticacion-API.md).
 
 ## Arranque del backend
 
@@ -157,7 +152,7 @@ El valor `aprobado = NULL` no pasa el predicado de pendiente. El backend ignora 
 
 `PATCH /api/movimientos/:id/razon` recibe `{ "razonId": entero positivo | null }`. El repositorio primero obtiene el movimiento; si el valor no es `null`, vuelve a consultar opciones válidas para el tipo del registro y rechaza una razón no presente. Después actualiza solo `dbo.Movimientos.RazonId`, relee el registro y confirma la persistencia. `null` significa «Sin razón».
 
-La edición de razones requiere rol Administrador. El servidor obtiene la identidad de la sesión y nunca acepta un nombre enviado por el navegador. La ruta Windows de inicio de sesión exige los encabezados de identidad y secreto inyectados por IIS, y compara la cuenta con `WINDOWS_ADMIN_USERS`.
+La edición de razones requiere rol Administrador. El servidor obtiene la identidad de la sesión y nunca acepta un nombre enviado por el navegador.
 
 ## Diagnóstico de fallos
 
@@ -174,9 +169,9 @@ Que la prueba de conexión pase no confirma el permiso para leer/escribir tablas
 
 - No exponer directamente `executeSQLCommand` a clientes web.
 - No permitir SQL proveniente del navegador.
-- Gerente, Superintendente y Administrador local usan hashes scrypt en el `.env` ignorado por Git; las sesiones son cookies HttpOnly, SameSite Strict, firmadas y con expiración de ocho horas. Usar HTTPS en producción (`NODE_ENV=production`) para que la cookie tenga atributo Secure.
-- Windows Authentication se implementa en IIS solo para `/api/auth/windows`, no en Vite. Probar negociación Kerberos/NTLM, reemplazo de encabezados, confianza del proxy, HTTPS y rechazo de identidades fuera de la allowlist antes de publicar.
-- La cuenta de servicio Node debe correr bajo permisos mínimos; Express debe permanecer en loopback y el secreto de proxy debe protegerse en IIS y en el entorno de Node.
+- `ad_mailVal` valida las credenciales; SCRAPControl no las guarda. Las sesiones son cookies HttpOnly, SameSite Strict, firmadas y con expiración de ocho horas. Usar HTTPS en producción (`NODE_ENV=production`) para que la cookie tenga atributo Secure.
+- El backend debe tener conectividad HTTPS con `ad_mailVal` y confiar en su certificado TLS. Si el servicio no responde o devuelve una respuesta inválida, el login no concede acceso.
+- La cuenta de servicio Node debe correr bajo permisos mínimos; Express debe permanecer en loopback y el secreto de sesión debe protegerse en el entorno de Node.
 - Confirmar los permisos efectivos de la identidad corporativa y habilitar solo los estrictamente necesarios.
 - Mantener datos locales de configuración y secretos fuera de Git.
 - Las operaciones de dictamen/razón no tienen rollback automático ni transacción agrupada.

@@ -65,7 +65,7 @@ export interface HitoHistorial {
 export interface UsuarioAutenticado {
   id: string;
   nombre: string;
-  rol: 'Administrador' | 'Gerente' | 'Superintendente';
+  rol: 'Administrador' | 'Gerente';
 }
 
 export interface MovimientoDB {

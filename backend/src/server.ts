@@ -4,15 +4,9 @@ import dotenv from 'dotenv';
 import { connectToDatabase } from './config/database.js';
 import movimientosRoutes from './routes/movimientosRoutes.js';
 import { getHealth } from './controllers/healthController.js';
-import {
-  cerrarSesion,
-  getIdentidadWindows,
-  iniciarSesion,
-  iniciarSesionWindows,
-} from './controllers/authController.js';
+import { cerrarSesion, getUsuarioAutenticado, iniciarSesion } from './controllers/authController.js';
 import {
   crearMiddlewareAutenticacion,
-  crearMiddlewareWindowsAdmin,
   validarConfiguracionAutenticacion,
 } from './middleware/authentication.js';
 
@@ -21,7 +15,7 @@ validarConfiguracionAutenticacion();
 
 const app = express();
 app.disable('x-powered-by');
-const PORT = Number(process.env.PORT ?? 3001);
+const PORT = Number(process.env.PORT ?? 4009);
 if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
   throw new Error('PORT must be an integer between 1 and 65535');
 }
@@ -57,9 +51,8 @@ app.use((req, _res, next) => {
 app.get('/api/health', getHealth);
 app.post('/api/auth/login', iniciarSesion);
 app.post('/api/auth/logout', cerrarSesion);
-app.get('/api/auth/windows', crearMiddlewareWindowsAdmin(), iniciarSesionWindows);
 app.use('/api', crearMiddlewareAutenticacion());
-app.get('/api/auth/me', getIdentidadWindows);
+app.get('/api/auth/me', getUsuarioAutenticado);
 app.use('/api/movimientos', movimientosRoutes);
 
 // Iniciar servidor y conectar a base de datos

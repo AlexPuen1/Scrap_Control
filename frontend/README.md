@@ -30,15 +30,14 @@ Interfaz React 19 + TypeScript + Vite. El frontend consume únicamente las rutas
 
 ## Cliente y contratos HTTP
 
-La base de rutas se configura con `VITE_API_BASE_URL`; si no existe, es `/api`. Durante desarrollo Vite enruta `/api` a `http://127.0.0.1:3001`.
+La base de rutas se configura con `VITE_API_BASE_URL`; si no existe, es `/api`. Durante desarrollo Vite enruta `/api` a `http://127.0.0.1:4009`.
 
-Al iniciar, la aplicación consulta `GET /api/auth/me` usando una cookie HttpOnly de sesión. El formulario envía credenciales locales a `POST /api/auth/login`; Administrador también puede usar `GET /api/auth/windows`, protegido por IIS. El navegador no guarda la contraseña ni el rol en `sessionStorage`. Vite no implementa ni simula Windows Authentication.
+Al iniciar, la aplicación consulta `GET /api/auth/me` usando una cookie HttpOnly de sesión. El formulario envía correo y contraseña a `POST /api/auth/login`; el backend los valida con `ad_mailVal` y no los almacena. El navegador no guarda la contraseña ni el rol en `sessionStorage`.
 
 | Interacción | Solicitud | Efecto |
 |---|---|---|
 | Identidad actual | `GET /api/auth/me` | Devuelve la cuenta y rol asociados a la sesión firmada. |
-| Login local | `POST /api/auth/login` | Recibe `{ usuario, contrasena }`; las credenciales se validan solo en backend y se establece cookie HttpOnly. |
-| Login Windows | `GET /api/auth/windows` | Intercambia una identidad Windows de Administrador validada por IIS por una sesión de aplicación. |
+| Login corporativo | `POST /api/auth/login` | Recibe `{ usuario, contrasena }`; el backend los reenvía a `ad_mailVal` y establece cookie HttpOnly solo ante `response: "OK"`. |
 | Cerrar sesión | `POST /api/auth/logout` | Invalida la cookie de sesión en el navegador. |
 | Carga compartida | `GET /api/movimientos` | Filas del periodo reciente calculado por el backend. |
 | Búsqueda Dashboard | `GET /api/movimientos?fechaInicio=...&fechaFin=...` | Fechas de UI son inclusivas; el cliente envía fin exclusivo (día posterior). |
@@ -64,7 +63,7 @@ El cliente comprueba `response.ok`, `exitoso` y que exista la estructura de dato
 - Filtros paso a paso propone por defecto el mes calendario de la fecha disponible más reciente. Al pulsar Buscar envía los filtros opcionales a `GET /api/movimientos`; no carga resultados nuevos mientras se cambian opciones.
 - La fecha de aprobación mostrada en Movimientos proviene de `dbo.Movimientos.dtAprobado`; los pendientes muestran “Sin aprobar”.
 - Las tablas de Movimientos y Aprobaciones permiten desplazamiento horizontal y envuelven el texto largo en varias líneas para mostrar completos los valores, sin truncarlos con puntos suspensivos.
-- Gerente y Superintendente tienen acceso de interfaz a Movimientos, Aprobaciones y Precio. Dashboard, Fallas por línea, Reportes, Comparación mensual, Filtros paso a paso, Motivos y Configuración son de Administrador. La autorización del backend se aplica por operación; ocultar una página en el frontend no equivale por sí solo a restringir todos los datos del API.
+- Gerente tiene acceso de interfaz a Movimientos, Aprobaciones y Precio. Dashboard, Fallas por línea, Reportes, Comparación mensual, Filtros paso a paso, Motivos y Configuración son de Administrador. La autorización del backend se aplica por operación; ocultar una página en el frontend no equivale por sí solo a restringir todos los datos del API.
 - Aprobar o denegar una fila abre directamente un diálogo de confirmación, sin la pantalla intermedia de revisión. El responsable proviene de la sesión autenticada y no se captura manualmente; se mantiene el comentario obligatorio al rechazar Scrap.
 - El Dashboard consulta otro intervalo al pulsar **Buscar**. El error y rango personalizado corresponden a esa página; no reemplaza la lista compartida para las otras pantallas.
 - La gráfica de aprobaciones consulta en forma independiente. «Todas las aprobaciones» no usa rango; «Mes seleccionado» se sincroniza con el periodo aplicado del Dashboard y filtra por `dtAprobado`, fecha real del dictamen.
@@ -123,13 +122,13 @@ npm run preview
 ## Límites de seguridad
 
 - El navegador no debe recibir secretos ni conectarse a `executeSQLCommand`.
-- En IIS, Windows Authentication se limita a `/api/auth/windows`; los demás accesos usan sesión local.
-- Las contraseñas locales se guardan como hashes scrypt en `BaseDeDatos/.env`; nunca se incluyen en el frontend ni en archivos versionados.
+- El backend valida credenciales con `ad_mailVal`; no guarda ni registra contraseñas.
+- La respuesta `fullname` se muestra si está disponible; si viene vacía, se usa el `mail` devuelto por el API para identificar al responsable.
 - El nombre de responsable de un dictamen se obtiene del backend a partir de la sesión, no de un campo enviado por el navegador.
 - Vite y `vite preview` no simulan autenticación. La prueba automatizada de autorización no sustituye la prueba integrada de IIS/AD/Kerberos o NTLM.
 - Datos de costos, historial, empleados y funcionalidades SAP no deben usarse como registros oficiales mientras sigan siendo locales/mock.
 
-Consulta la [documentación técnica](../Documentacion.md), el [README del proyecto](../README.md), la [guía de conexión](../BaseDeDatos/ConexionBaseDatos.md) y la [configuración de IIS](../IIS-Windows-Authentication.md).
+Consulta la [documentación técnica](../Documentacion.md), el [README del proyecto](../README.md), la [guía de conexión](../BaseDeDatos/ConexionBaseDatos.md) y la [autenticación corporativa](../Autenticacion-API.md).
 
 ## Cambio reciente: gráfica de aprobaciones (2 de noviembre de 2026)
 

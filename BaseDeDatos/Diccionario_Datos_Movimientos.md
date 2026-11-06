@@ -43,7 +43,7 @@ La consulta ordinaria obtiene `movimiento.*` y añade `LineaId` y `DescripcionRa
 
 ### Dictamen y edición
 
-La ruta individual actualiza campos del dictamen exclusivamente cuando `id` coincide y `aprobado = 0`. Para aprobar escribe 1; para rechazar escribe 4; además asigna `nvAprobadoPor` y `dtAprobado`. No modifica registros con `aprobado IS NULL` o distinto de 0. Los tres roles autenticados pueden solicitar dictamen; la identidad registrada deriva de la sesión verificada por el servidor, no de un nombre escrito en el formulario.
+La ruta individual actualiza campos del dictamen exclusivamente cuando `id` coincide y `aprobado = 0`. Para aprobar escribe 1; para rechazar escribe 4; además asigna `nvAprobadoPor` y `dtAprobado`. No modifica registros con `aprobado IS NULL` o distinto de 0. Los roles Gerente y Administrador pueden solicitar dictamen; la identidad registrada deriva de la sesión verificada por el servidor, no de un nombre escrito en el formulario.
 
 La edición de razón solo escribe `RazonId` y requiere rol Administrador. Las opciones no son texto libre: el backend las valida contra el tipo del movimiento en `dbo.vw_Scrap_PowerBI`. El valor `null` limpia la razón. Ambas operaciones escriben datos reales y requieren una sesión autenticada.
 

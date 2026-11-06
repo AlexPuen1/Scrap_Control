@@ -59,7 +59,7 @@ Desde la raíz, para instalar dependencias, preparar la configuración local (si
 npm run iniciar
 ```
 
-En Windows también se puede ejecutar `iniciar.bat`. En el primer inicio se piden las credenciales locales de Gerente, Superintendente y Administrador; se guardan hashes scrypt y un secreto de sesión en `BaseDeDatos/.env`, nunca las contraseñas en texto claro. La configuración existente se conserva en las siguientes ejecuciones. Node.js 24 o posterior y acceso a npm son requisitos; consultar datos de SOE requiere conectividad con la API corporativa.
+En Windows también se puede ejecutar `iniciar.bat`. En el primer inicio se pide el correo que recibirá rol Administrador y se genera un secreto de sesión en `BaseDeDatos/.env`. Las contraseñas se validan en `ad_mailVal` y no se guardan localmente. Node.js 24 o posterior, acceso a npm y conectividad HTTPS con las API corporativas son requisitos.
 
 Para ejecutar verificaciones o compilar manualmente:
 
@@ -70,7 +70,7 @@ npm run build
 npm run dev
 ```
 
-El frontend de Vite usa normalmente `http://localhost:5173`; Express escucha solo en `http://127.0.0.1:3001`. `npm test` ejecuta pruebas unitarias aisladas del backend, sin conexión SQL; `npm run test:db` verifica conexión con un `SELECT` de solo lectura. `npm run build` ejecuta compilación TypeScript del backend y build TypeScript/Vite del frontend. `npm start` arranca el backend compilado y `vite preview`; no sustituye la configuración de un servidor productivo.
+El frontend de Vite usa normalmente `http://localhost:5173`; Express escucha solo en `http://127.0.0.1:4009`. `npm test` ejecuta pruebas unitarias aisladas del backend, sin conexión SQL; `npm run test:db` verifica conexión con un `SELECT` de solo lectura. `npm run build` ejecuta compilación TypeScript del backend y build TypeScript/Vite del frontend. `npm start` arranca el backend compilado y `vite preview`; no sustituye la configuración de un servidor productivo.
 
 ### Variables
 
@@ -82,14 +82,10 @@ El frontend de Vite usa normalmente `http://localhost:5173`; Express escucha sol
 | `DB_SERVER` | Nombre solicitado al servicio SQL (por defecto `EST02DB`). |
 | `DB_DATABASE` | Base solicitada (por defecto `SOE`). |
 | `DB_API_TIMEOUT` | Timeout de `fetch` en milisegundos (por defecto `20000`). |
-| `AUTH_MANAGER_USERNAME`, `AUTH_MANAGER_PASSWORD_SALT`, `AUTH_MANAGER_PASSWORD_HASH` | Cuenta local de Gerente y hash scrypt de su contraseña. |
-| `AUTH_SUPERINTENDENTE_USERNAME`, `AUTH_SUPERINTENDENTE_PASSWORD_SALT`, `AUTH_SUPERINTENDENTE_PASSWORD_HASH` | Cuenta local de Superintendente y hash scrypt de su contraseña. |
-| `AUTH_ADMIN_USERNAME`, `AUTH_ADMIN_PASSWORD_SALT`, `AUTH_ADMIN_PASSWORD_HASH` | Credenciales locales adicionales de Administrador; Windows Authentication se conserva como alternativa. |
+| `AUTH_ADMIN_EMAIL` | Correo devuelto por `ad_mailVal` que recibirá rol Administrador; el resto de cuentas válidas recibe rol Gerente. |
 | `AUTH_SESSION_SECRET` | Secreto de al menos 32 bytes para firmar las cookies de sesión. |
-| `WINDOWS_ADMIN_USERS` | Cuentas Windows/UPN autorizadas como Administrador, separadas por coma. |
-| `WINDOWS_AUTH_PROXY_KEY` | Secreto compartido entre IIS y Express para la ruta de inicio Windows. |
 
-`BaseDeDatos/.env` debe contener sales aleatorias y hashes scrypt, no contraseñas en texto claro. `backend/.env` controla `PORT` (por defecto `3001`) y `CORS_ORIGINS`. Express escucha exclusivamente en `127.0.0.1`. IIS sobrescribe los encabezados internos únicamente al autenticar `/api/auth/windows`. `VITE_API_BASE_URL` permite definir la base de las rutas Express en el frontend; sin ella se usa `/api`. No almacenar secretos en documentación o archivos versionados.
+El asistente de inicio elimina de `BaseDeDatos/.env` las variables antiguas de contraseñas locales y Windows Authentication. Las contraseñas se envían desde el backend a `ad_mailVal` por HTTPS y no se escriben en disco ni en logs. `backend/.env` controla `PORT` (por defecto `4009`) y `CORS_ORIGINS`. Express escucha exclusivamente en `127.0.0.1`. `VITE_API_BASE_URL` permite definir la base de las rutas Express en el frontend; sin ella se usa `/api`. No almacenar secretos en documentación o archivos versionados.
 
 ## 4. Arranque y estado de salud
 
@@ -165,9 +161,8 @@ La comparación es independiente de los rangos de Dashboard, Reportes y Fallas p
 
 | Método | Ruta | Validación/resultado |
 |---|---|---|
-| `POST` | `/api/auth/login` | Recibe usuario/contraseña; valida hash scrypt y establece cookie HttpOnly. |
+| `POST` | `/api/auth/login` | Reenvía `{ nvMail, nvPass }` a `ad_mailVal`; solo `response: "OK"` establece cookie HttpOnly. |
 | `POST` | `/api/auth/logout` | Elimina la cookie de sesión. |
-| `GET` | `/api/auth/windows` | Solo identidad Windows de Administrador validada por IIS; emite cookie de sesión. |
 | `GET` | `/api/auth/me` | Devuelve la cuenta y rol de la sesión firmada. |
 | `GET` | `/api/health` | `status`, fecha, tipo de DB, estado más reciente y nombres de tabla como metadatos estáticos. Público. |
 | `GET` | `/api/movimientos` | `{ exitoso, datos, conteo }`; acepta fechas y filtros opcionales `tipoId`, `aprobado`, `razonId`, `certificacionId`, `lineaId`, `almacen`, `busqueda`. |
@@ -222,7 +217,7 @@ El frontend toma IDs seleccionados que continúan visibles y confirmación; la i
 
 `GET /api/movimientos/razones?movimientoTipoId=N` agrupa razones con descripción no vacía desde `dbo.vw_Scrap_PowerBI`. La ruta de `PATCH /api/movimientos/:id/razon` implementa validación de pertenencia al catálogo y actualización de `dbo.Movimientos.RazonId`; requiere rol Administrador. La tabla `dbo.EtiquetasCI` no se usa porque no existe en la base consultada.
 
-Ambos cambios son persistentes. Para la configuración de IIS y las variables de autenticación, consultar [Windows Authentication en IIS](IIS-Windows-Authentication.md).
+Ambos cambios son persistentes. Para la autenticación corporativa y el mapeo de roles, consultar [Autenticación corporativa](Autenticacion-API.md).
 
 ## 9. Modelo SQL utilizado
 
@@ -268,7 +263,7 @@ Movimientos y Aprobaciones comparten controles grandes de búsqueda por folio/se
 
 La vista Filtros paso a paso propone el mes calendario de la fecha más reciente disponible. El usuario puede elegir filtros y pulsa Buscar para enviarlos a `GET /api/movimientos`; el servidor valida parámetros, consulta el rango y aplica los criterios disponibles sobre el resultado. La fecha final elegida se convierte al límite exclusivo del día siguiente. Cambiar una opción no ejecuta una llamada hasta pulsar Buscar.
 
-La tabla de Movimientos presenta `dbo.Movimientos.Empleado` bajo la columna Supervisor y `dtAprobado` como Fecha aprobación; un registro pendiente muestra “Sin aprobar”. Gerente y Superintendente tienen acceso de interfaz a Movimientos, Aprobaciones y Precio. Dashboard, Fallas por línea, Reportes, Comparación mensual, Filtros paso a paso, Motivos y Configuración son exclusivos de Administrador.
+La tabla de Movimientos presenta `dbo.Movimientos.Empleado` bajo la columna Supervisor y `dtAprobado` como Fecha aprobación; un registro pendiente muestra “Sin aprobar”. Gerente tiene acceso de interfaz a Movimientos, Aprobaciones y Precio. Dashboard, Fallas por línea, Reportes, Comparación mensual, Filtros paso a paso, Motivos y Configuración son exclusivos de Administrador.
 
 Las tablas de Movimientos y Aprobaciones permiten desplazamiento horizontal cuando no caben en la pantalla y envuelven los valores largos en varias líneas para evitar recortes o puntos suspensivos. En pantallas pequeñas la tabla puede ocupar más ancho que el viewport; se desplaza dentro de su contenedor.
 
@@ -281,8 +276,8 @@ Motivos/notificaciones se inicializan de datos de `frontend/src/mock/data.ts` y 
 - `GET /api/health` es una instantánea del último estado, no un chequeo por petición. Una respuesta `online` no asegura que la próxima consulta corporativa funcione.
 - La lista de movimientos no tiene paginación de servidor. El volumen del periodo se descarga a Node y se envía al frontend; filtros de certificación/razón siguen aplicándose en memoria. En Reportes, al elegir ambas fechas se vuelve a consultar ese intervalo en el servidor (fin inclusivo); evita rangos innecesariamente amplios.
 - La API corporativa es un ejecutor SQL genérico. El backend controla sus propias llamadas, pero los permisos efectivos deben restringirse en el servicio corporativo.
-- Las rutas `/api` operativas requieren una cookie HttpOnly de sesión firmada. Login local está disponible para los tres roles; Windows Authentication se limita al intercambio de identidad de Administrador en `/api/auth/windows`.
-- Antes de publicar, completar y probar el despliegue IIS/ARR para `/api/auth/windows`, reemplazo de encabezados, CORS real, TLS y protección de secretos. Express debe permanecer en loopback y no exponerse directamente.
+- Las rutas `/api` operativas requieren una cookie HttpOnly de sesión firmada. `POST /api/auth/login` valida las credenciales con `ad_mailVal`; las respuestas que no contienen `response: "OK"` no conceden acceso.
+- Antes de publicar, comprobar la conectividad TLS del backend con `ad_mailVal` y la API de datos, configurar los orígenes CORS reales y proteger el secreto de sesión. Express debe permanecer en loopback y no exponerse directamente.
 - No poner secretos en `.md`, repositorio ni logs. Mantener HTTPS y certificados confiables.
 
 Para detalles de conexión y campos, consultar [Conexión a datos](BaseDeDatos/ConexionBaseDatos.md) y [Diccionario de datos](BaseDeDatos/Diccionario_Datos_Movimientos.md).
@@ -291,9 +286,9 @@ La interfaz usa fuentes del sistema disponibles en el equipo y no carga tipograf
 
 ## Autenticación y autorización
 
-El frontend consulta `GET /api/auth/me` al iniciar. `POST /api/auth/login` valida las credenciales locales configuradas para Gerente, Superintendente y Administrador con hashes scrypt; Administrador también puede usar Windows Authentication en IIS. El backend firma una cookie HttpOnly con expiración de ocho horas y aplica restricciones de rol en las rutas protegidas. No confía en un rol enviado por el frontend.
+El frontend consulta `GET /api/auth/me` al iniciar. `POST /api/auth/login` reenvía correo y contraseña desde el backend a `https://estms01ia.magna.global/node-red/ad_mailVal`. Solo `response: "OK"` con `username` y `mail` válidos concede acceso. El backend usa el `fullname` de la respuesta si existe y, cuando está vacío, el correo; firma una cookie HttpOnly de ocho horas y aplica restricciones de rol sin confiar en un rol enviado por el frontend.
 
-Express escucha solo en loopback. Dashboard y otras páginas administrativas también están restringidas en la interfaz; el backend reserva explícitamente para Administrador las rutas de razones, edición de razones, fallas por línea y comparación mensual. Los dictámenes registran el nombre asociado a la sesión en `nvAprobadoPor`; los tres roles autenticados tienen acceso al flujo de dictamen. No se debe confundir el ocultamiento de páginas frontend con la autorización de cada endpoint. El inicio Windows integrado con IIS/ARR no se probó en este equipo; las pruebas automatizadas no certifican la negociación Kerberos/NTLM. Consulta [Configuración de IIS](IIS-Windows-Authentication.md).
+Todos los usuarios validados reciben rol Gerente, excepto el correo configurado en `AUTH_ADMIN_EMAIL`, que recibe rol Administrador. Express escucha solo en loopback. Dashboard y otras páginas administrativas también están restringidas en la interfaz; el backend reserva explícitamente para Administrador las rutas de razones, edición de razones, fallas por línea y comparación mensual. Los dictámenes registran en `nvAprobadoPor` el nombre completo devuelto por la API o, si viene vacío, el correo; la confirmación muestra esa identidad y ya no permite editarla. Ambos roles pueden dictaminar. No se debe confundir el ocultamiento de páginas frontend con la autorización de cada endpoint. Consulta [Autenticación corporativa](Autenticacion-API.md).
 
 La pantalla Aprobaciones muestra tarjetas de total de piezas Scrap, pendientes, aprobados y rechazados; las tarjetas de estado filtran las filas y solo las pendientes conservan botones de dictamen. Movimientos y Aprobaciones usan el mismo panel guiado de búsqueda. La ruta Filtros paso a paso consulta por rango y criterios al pulsar Buscar. La tabla de Movimientos presenta `dbo.Movimientos.Empleado` en Supervisor y `dtAprobado` en Fecha aprobación. Al pulsar Aprobar o Denegar se muestra un diálogo de confirmación y el comentario obligatorio al denegar Scrap; el responsable se obtiene de la sesión autenticada.
 
@@ -321,7 +316,7 @@ Esta ronda de cambios de código se verificó localmente con compilación backen
 | Estado de conexión | Una respuesta no JSON de la API SQL ahora marca la conexión como fallida y registra el mensaje en `ultimoError`. |
 | Textos de interfaz | Se quitaron nombres/roles ficticios y afirmaciones no integradas. El perfil actual muestra la cuenta autenticada por Windows. |
 
-**Estado actual de acceso:** el login local por contraseña y la sesión firmada están implementados; Windows Authentication para Administrador requiere configuración de ruta en IIS/ARR, sobrescritura de encabezados, HTTPS y secreto compartido. La prueba unitaria no certifica el inicio de sesión integrado desde una laptop.
+**Estado actual de acceso:** el login a través de `ad_mailVal` y la sesión firmada están implementados. Las pruebas automatizadas usan respuestas simuladas; no envían ni comprueban credenciales reales y no sustituyen la validación de conectividad en una estación corporativa.
 
 **Pendiente de capacidad:** los movimientos siguen sin paginación del lado servidor; la consulta inicial y los intervalos amplios pueden traer muchas filas. La búsqueda y ciertos filtros siguen aplicándose en memoria.
 

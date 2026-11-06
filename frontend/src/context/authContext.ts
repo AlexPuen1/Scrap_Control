@@ -7,7 +7,6 @@ export interface AuthContextValue {
   error: string | null;
   reintentar: () => void;
   iniciarSesion: (usuario: string, contrasena: string) => Promise<void>;
-  iniciarSesionWindows: () => Promise<void>;
   cerrarSesion: () => Promise<void>;
 }
 

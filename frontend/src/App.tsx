@@ -19,14 +19,13 @@ import { ConfiguracionPage } from './pages/ConfiguracionPage';
 import { FiltrosPage } from './pages/FiltrosPage';
 
 const AppRoutes: React.FC = () => {
-  const { usuario, cargando, error, iniciarSesion, iniciarSesionWindows } = useAuth();
+  const { usuario, cargando, error, iniciarSesion } = useAuth();
   if (cargando || !usuario) {
     return (
       <LoginPage
         cargando={cargando}
         error={error}
         onIniciarSesion={iniciarSesion}
-        onIniciarSesionWindows={iniciarSesionWindows}
       />
     );
   }

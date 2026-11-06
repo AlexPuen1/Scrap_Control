@@ -1,11 +1,6 @@
 import type { Request, Response } from 'express';
-import {
-  autenticarCuentaLocal,
-  crearCookieSesion,
-  COOKIE_NAME,
-  opcionesCookieSesion,
-  type UsuarioAutenticado,
-} from '../middleware/authentication.js';
+import { crearCookieSesion, COOKIE_NAME, opcionesCookieSesion } from '../middleware/authentication.js';
+import { crearUsuarioAutenticado, validarCredencialesAd } from '../services/adMailValidation.js';
 
 function establecerSesion(res: Response, usuario: NonNullable<Request['usuarioAutenticado']>) {
   const secreto = process.env.AUTH_SESSION_SECRET;
@@ -27,27 +22,19 @@ export async function iniciarSesion(req: Request, res: Response): Promise<void> 
     return;
   }
 
-  let cuenta: UsuarioAutenticado | null;
+  let identidad: Awaited<ReturnType<typeof validarCredencialesAd>>;
   try {
-    cuenta = await autenticarCuentaLocal(usuario, contrasena);
+    identidad = await validarCredencialesAd(usuario, contrasena);
   } catch (error) {
-    console.error('[Auth] Error al verificar credenciales', error);
-    res.status(500).json({ exitoso: false, mensaje: 'No se pudo validar la cuenta en este momento.' });
+    console.error('[Auth] Error del servicio corporativo de autenticación', error);
+    res.status(502).json({ exitoso: false, mensaje: 'No se pudo validar la cuenta en este momento.' });
     return;
   }
-  if (!cuenta) {
+  if (!identidad) {
     res.status(401).json({ exitoso: false, mensaje: 'Usuario o contraseña incorrectos.' });
     return;
   }
-  establecerSesion(res, cuenta);
-}
-
-export function iniciarSesionWindows(req: Request, res: Response): void {
-  if (!req.usuarioAutenticado) {
-    res.status(401).json({ exitoso: false, mensaje: 'No se pudo validar la identidad de Windows.' });
-    return;
-  }
-  establecerSesion(res, req.usuarioAutenticado);
+  establecerSesion(res, crearUsuarioAutenticado(identidad));
 }
 
 export function cerrarSesion(_req: Request, res: Response): void {
@@ -56,7 +43,7 @@ export function cerrarSesion(_req: Request, res: Response): void {
   res.json({ exitoso: true });
 }
 
-export function getIdentidadWindows(req: Request, res: Response): void {
+export function getUsuarioAutenticado(req: Request, res: Response): void {
   if (!req.usuarioAutenticado) {
     res.status(401).json({ exitoso: false, mensaje: 'Inicia sesión para continuar.' });
     return;

@@ -24,7 +24,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             usuario: null,
             error: errorConsulta instanceof Error
               ? errorConsulta.message
-              : 'No se pudo verificar la cuenta de Windows.',
+              : 'No se pudo verificar la cuenta.',
           });
         }
       });
@@ -45,9 +45,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     reintentar: () => setIntento((actual) => actual + 1),
     iniciarSesion: async (usuario, contrasena) => {
       establecerUsuario(await ScrapService.iniciarSesion(usuario, contrasena));
-    },
-    iniciarSesionWindows: async () => {
-      establecerUsuario(await ScrapService.iniciarSesionWindows());
     },
     cerrarSesion: async () => {
       await ScrapService.cerrarSesion();

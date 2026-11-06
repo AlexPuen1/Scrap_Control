@@ -50,13 +50,11 @@ export const AprobacionesPage: React.FC = () => {
   const [modalDictamenMultiple, setModalDictamenMultiple] = useState(false);
   const [confirmacionFinalMultiple, setConfirmacionFinalMultiple] = useState(false);
   const [decisionMultiple, setDecisionMultiple] = useState<Decision>(1);
-  const [nombreResponsableMultiple, setNombreResponsableMultiple] = useState('');
   const [comentarioRechazoMultiple, setComentarioRechazoMultiple] = useState('');
   const [errorAprobacionMultiple, setErrorAprobacionMultiple] = useState<string | null>(null);
   const [idsFallidos, setIdsFallidos] = useState<string[]>([]);
   const [aprobacionMultipleEnviando, setAprobacionMultipleEnviando] = useState(false);
   const [dictamenPendiente, setDictamenPendiente] = useState<DictamenPendiente | null>(null);
-  const [nombreResponsable, setNombreResponsable] = useState('');
   const [comentarioRechazo, setComentarioRechazo] = useState('');
   const [dictamenEnviando, setDictamenEnviando] = useState(false);
   const [errorDictamen, setErrorDictamen] = useState<string | null>(null);
@@ -135,11 +133,6 @@ export const AprobacionesPage: React.FC = () => {
 
   const prepararAprobacionMultiple = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const responsable = nombreResponsableMultiple.trim();
-    if (!responsable) {
-      setErrorAprobacionMultiple('Captura el nombre del responsable para continuar.');
-      return;
-    }
     if (decisionMultiple === 4 && rechazoMultipleIncluyeScrap && !comentarioRechazoMultiple.trim()) {
       setErrorAprobacionMultiple('Captura un comentario para rechazar Scrap.');
       return;
@@ -156,7 +149,7 @@ export const AprobacionesPage: React.FC = () => {
       const resultado = await dictaminarMovimientos(
         seleccionadosVisibles,
         decisionMultiple,
-        nombreResponsableMultiple.trim(),
+        usuario?.nombre ?? '',
         comentarioRechazoMultiple,
       );
       setIdsFallidos(resultado.fallidos.map(({ id }) => id));
@@ -174,7 +167,6 @@ export const AprobacionesPage: React.FC = () => {
 
   const abrirConfirmacionDictamen = (movimiento: Movimiento, decision: Decision) => {
     setDictamenPendiente({ movimiento, decision });
-    setNombreResponsable(usuario?.nombre ?? '');
     setComentarioRechazo('');
     setErrorDictamen(null);
   };
@@ -189,11 +181,6 @@ export const AprobacionesPage: React.FC = () => {
     event.preventDefault();
     if (!dictamenPendiente) return;
 
-    const responsable = nombreResponsable.trim();
-    if (!responsable) {
-      setErrorDictamen('Captura el nombre del responsable para continuar.');
-      return;
-    }
     if (requiereComentarioRechazo && !comentarioRechazo.trim()) {
       setErrorDictamen('Captura un comentario para rechazar Scrap.');
       return;
@@ -205,7 +192,7 @@ export const AprobacionesPage: React.FC = () => {
       if (dictamenPendiente.decision === 1) {
         await aprobarMovimiento(dictamenPendiente.movimiento.id, usuario?.nombre ?? '');
       } else {
-        await rechazarMovimiento(dictamenPendiente.movimiento.id, responsable, comentarioRechazo);
+        await rechazarMovimiento(dictamenPendiente.movimiento.id, usuario?.nombre ?? '', comentarioRechazo);
       }
       setDictamenPendiente(null);
     } catch (error) {
@@ -316,7 +303,6 @@ export const AprobacionesPage: React.FC = () => {
               disabled={seleccionadosVisibles.length === 0 || aprobacionMultipleEnviando}
               onClick={() => {
                 setDecisionMultiple(1);
-                setNombreResponsableMultiple(usuario?.nombre ?? '');
                 setErrorAprobacionMultiple(null);
                 setIdsFallidos([]);
                 setModalDictamenMultiple(true);
@@ -331,7 +317,6 @@ export const AprobacionesPage: React.FC = () => {
               disabled={seleccionadosVisibles.length === 0 || aprobacionMultipleEnviando}
               onClick={() => {
                 setDecisionMultiple(4);
-                setNombreResponsableMultiple(usuario?.nombre ?? '');
                 setComentarioRechazoMultiple('');
                 setErrorAprobacionMultiple(null);
                 setIdsFallidos([]);
@@ -490,21 +475,8 @@ export const AprobacionesPage: React.FC = () => {
             {decisionMultiple === 1
               ? 'Se aprobarán los movimientos seleccionados.'
               : 'Se rechazarán los movimientos seleccionados.'} El cambio se guardará en la base de datos y no se puede deshacer desde la aplicación.
-            {' '}La cuenta autenticada de Windows se guardará como responsable del dictamen.
+            {' '}Se registrará como responsable a <strong>{usuario?.nombre}</strong>.
           </p>
-          <label htmlFor="responsable-aprobacion-multiple" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Cuenta de Windows que quedará registrada como responsable
-            <input
-              id="responsable-aprobacion-multiple"
-              type="text"
-              required
-              maxLength={200}
-              value={nombreResponsableMultiple}
-              readOnly
-              disabled={aprobacionMultipleEnviando}
-              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-            />
-          </label>
           {decisionMultiple === 4 && rechazoMultipleIncluyeScrap && (
             <label htmlFor="comentario-rechazo-multiple" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
               Comentario para el rechazo de Scrap
@@ -568,11 +540,11 @@ export const AprobacionesPage: React.FC = () => {
               ? 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
               : 'border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200'
           }`}>
-            {`¿Estás seguro de ${decisionMultiple === 1 ? 'aprobar' : 'rechazar'} los ${seleccionadosVisibles.length} movimientos seleccionados?`}
+            {`¿Estás seguro de ${decisionMultiple === 1 ? 'aprobar' : 'rechazar'} los ${seleccionadosVisibles.length} movimientos seleccionados? `}
+            Se registrará como responsable a <strong>{usuario?.nombre}</strong>.
           </p>
           <p className="text-xs text-slate-600 dark:text-slate-300">
             Esta acción actualizará los dictámenes en la base de datos y no se puede deshacer desde la aplicación.
-            {' '}La cuenta autenticada de Windows se guardará como responsable del dictamen.
           </p>
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
             <Button
@@ -612,23 +584,11 @@ export const AprobacionesPage: React.FC = () => {
             }`}>
               {`¿Estás seguro de ${dictamenPendiente.decision === 1 ? 'aprobar' : 'denegar'} el movimiento #${dictamenPendiente.movimiento.id}?`}
               {' '}Esta acción se guarda en SOE y no se puede deshacer desde la aplicación.
+              {' '}Se registrará como responsable a <strong>{usuario?.nombre}</strong>.
             </p>
             <p className="text-xs text-slate-600 dark:text-slate-300">
               {dictamenPendiente.movimiento.movimientoTipo} · {dictamenPendiente.movimiento.matnr} · {dictamenPendiente.movimiento.cantidad} piezas
             </p>
-            <label htmlFor="nombre-responsable" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-              Cuenta de Windows que quedará registrada como responsable
-              <input
-                id="nombre-responsable"
-                name="nombre-responsable"
-                type="text"
-                value={nombreResponsable}
-                readOnly
-                disabled={dictamenEnviando}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-                placeholder="Nombre y apellido"
-              />
-            </label>
             {requiereComentarioRechazo && (
               <label htmlFor="comentario-rechazo" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
                 Comentario de rechazo
@@ -662,7 +622,7 @@ export const AprobacionesPage: React.FC = () => {
                 type="submit"
                 variant={dictamenPendiente.decision === 1 ? 'success' : 'danger'}
                 loading={dictamenEnviando}
-                disabled={!nombreResponsable.trim() || (requiereComentarioRechazo && !comentarioRechazo.trim())}
+                disabled={!usuario?.nombre || (requiereComentarioRechazo && !comentarioRechazo.trim())}
               >
                 {dictamenPendiente.decision === 1 ? 'Sí, aprobar' : 'Sí, denegar'}
               </Button>

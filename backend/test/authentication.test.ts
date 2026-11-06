@@ -1,20 +1,16 @@
 import assert from 'node:assert/strict';
-import { scryptSync } from 'node:crypto';
 import { createServer } from 'node:http';
 import { test } from 'node:test';
 import express from 'express';
 import {
-  autenticarCuentaLocal,
   crearCookieSesion,
   crearMiddlewareAutenticacion,
-  crearMiddlewareWindowsAdmin,
   exigirRoles,
   validarConfiguracionAutenticacion,
 } from '../src/middleware/authentication.js';
 import { cerrarSesion, iniciarSesion } from '../src/controllers/authController.js';
 
 const SESSION_SECRET = 'secreto-de-sesion-de-prueba-mayor-a-32-bytes';
-const PROXY_KEY = 'clave-de-proxy-de-prueba-mayor-a-32-bytes';
 
 async function conServidor(
   ejecutar: (baseUrl: string) => Promise<void>,
@@ -42,98 +38,16 @@ async function conServidor(
   }
 }
 
-test('Windows Authentication asigna Administrador solo a la identidad permitida', async () => {
-  await conServidor(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/auth/me`, {
-      headers: {
-        'X-Auth-Proxy-Key': PROXY_KEY,
-        'X-Authenticated-User': 'ALEJANDRO.PUENTE1@MAGNA.COM',
-      },
-    });
-    assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), {
-      exitoso: true,
-      usuario: {
-        id: 'alejandro.puente1@magna.com',
-        nombre: 'alejandro.puente1@magna.com',
-        rol: 'Administrador',
-      },
-    });
-  }, crearMiddlewareWindowsAdmin({
+test('la configuración requiere un secreto de sesión y valida el correo administrador opcional', () => {
+  assert.doesNotThrow(() => validarConfiguracionAutenticacion({ AUTH_SESSION_SECRET: SESSION_SECRET }));
+  assert.doesNotThrow(() => validarConfiguracionAutenticacion({
     AUTH_SESSION_SECRET: SESSION_SECRET,
-    WINDOWS_AUTH_PROXY_KEY: PROXY_KEY,
-    WINDOWS_ADMIN_USERS: 'alejandro.puente1@magna.com',
+    AUTH_ADMIN_EMAIL: 'admin@example.com',
   }));
-});
-
-test('Windows Authentication rechaza cuentas ajenas y configuración incompleta', async () => {
-  await conServidor(async (baseUrl) => {
-    const noAutenticado = await fetch(`${baseUrl}/api/auth/me`, {
-      headers: { 'X-Auth-Proxy-Key': PROXY_KEY },
-    });
-    assert.equal(noAutenticado.status, 403);
-
-    const noAutorizado = await fetch(`${baseUrl}/api/auth/me`, {
-      headers: {
-        'X-Auth-Proxy-Key': PROXY_KEY,
-        'X-Authenticated-User': 'otra.persona@magna.com',
-      },
-    });
-    assert.equal(noAutorizado.status, 403);
-
-    const claveIncorrecta = await fetch(`${baseUrl}/api/auth/me`, {
-      headers: {
-        'X-Auth-Proxy-Key': 'incorrecta',
-        'X-Authenticated-User': 'alejandro.puente1@magna.com',
-      },
-    });
-    assert.equal(claveIncorrecta.status, 401);
-  }, crearMiddlewareWindowsAdmin({
-    AUTH_SESSION_SECRET: SESSION_SECRET,
-    WINDOWS_AUTH_PROXY_KEY: PROXY_KEY,
-    WINDOWS_ADMIN_USERS: 'alejandro.puente1@magna.com',
-  }));
-
-  await conServidor(async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/auth/me`);
-    assert.equal(response.status, 503);
-  }, crearMiddlewareWindowsAdmin({}));
-});
-
-test('la autenticación local valida el hash y no concede un rol ante contraseña incorrecta', async () => {
-  const salt = '0123456789abcdef0123456789abcdef';
-  const hash = scryptSync('clave-correcta', Buffer.from(salt, 'hex'), 32).toString('hex');
-  const entorno = {
-    AUTH_MANAGER_USERNAME: 'gerente123@',
-    AUTH_MANAGER_PASSWORD_SALT: salt,
-    AUTH_MANAGER_PASSWORD_HASH: hash,
-  };
-
-  assert.deepEqual(await autenticarCuentaLocal('GERENTE123@', 'clave-correcta', entorno), {
-    id: 'gerente123@',
-    nombre: 'gerente123@',
-    rol: 'Gerente',
-  });
-  assert.equal(await autenticarCuentaLocal('gerente123@', 'incorrecta', entorno), null);
-});
-
-test('la configuración exige secretos y hashes completos, y permite Administrador local opcional', () => {
-  const entorno = {
-    AUTH_SESSION_SECRET: SESSION_SECRET,
-    AUTH_MANAGER_USERNAME: 'gerente123@',
-    AUTH_MANAGER_PASSWORD_SALT: '0123456789abcdef0123456789abcdef',
-    AUTH_MANAGER_PASSWORD_HASH: 'a'.repeat(64),
-    AUTH_SUPERINTENDENTE_USERNAME: 'super123@intendente',
-    AUTH_SUPERINTENDENTE_PASSWORD_SALT: 'fedcba9876543210fedcba9876543210',
-    AUTH_SUPERINTENDENTE_PASSWORD_HASH: 'b'.repeat(64),
-  };
-  assert.doesNotThrow(() => validarConfiguracionAutenticacion(entorno));
-  assert.throws(() => validarConfiguracionAutenticacion({ ...entorno, AUTH_MANAGER_PASSWORD_HASH: '' }));
+  assert.throws(() => validarConfiguracionAutenticacion({ AUTH_SESSION_SECRET: 'corto' }));
   assert.throws(() => validarConfiguracionAutenticacion({
-    ...entorno,
-    AUTH_ADMIN_USERNAME: 'gerente123@',
-    AUTH_ADMIN_PASSWORD_SALT: '0123456789abcdef0123456789abcdef',
-    AUTH_ADMIN_PASSWORD_HASH: 'c'.repeat(64),
+    AUTH_SESSION_SECRET: SESSION_SECRET,
+    AUTH_ADMIN_EMAIL: 'correo-inválido',
   }));
 });
 
@@ -162,15 +76,21 @@ test('la sesión firmada protege rutas autenticadas y rechaza cookies alteradas'
 test('el controlador inicia y cierra sesión con cookie HttpOnly', async () => {
   const previous = {
     AUTH_SESSION_SECRET: process.env.AUTH_SESSION_SECRET,
-    AUTH_MANAGER_USERNAME: process.env.AUTH_MANAGER_USERNAME,
-    AUTH_MANAGER_PASSWORD_SALT: process.env.AUTH_MANAGER_PASSWORD_SALT,
-    AUTH_MANAGER_PASSWORD_HASH: process.env.AUTH_MANAGER_PASSWORD_HASH,
+    AUTH_ADMIN_EMAIL: process.env.AUTH_ADMIN_EMAIL,
   };
-  const salt = 'fedcba9876543210fedcba9876543210';
+  const fetchOriginal = globalThis.fetch.bind(globalThis);
+  let solicitudApi: { nvMail: string; nvPass: string } | undefined;
   process.env.AUTH_SESSION_SECRET = SESSION_SECRET;
-  process.env.AUTH_MANAGER_USERNAME = 'gerente123@';
-  process.env.AUTH_MANAGER_PASSWORD_SALT = salt;
-  process.env.AUTH_MANAGER_PASSWORD_HASH = scryptSync('clave-correcta', Buffer.from(salt, 'hex'), 32).toString('hex');
+  process.env.AUTH_ADMIN_EMAIL = 'admin@example.com';
+  globalThis.fetch = (async (_input, init) => {
+    solicitudApi = JSON.parse(String(init?.body)) as { nvMail: string; nvPass: string };
+    return new Response(JSON.stringify({
+      response: 'OK',
+      username: 'testuser',
+      mail: 'manager@example.com',
+      fullname: '',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
 
   const app = express();
   app.use(express.json());
@@ -186,17 +106,27 @@ test('el controlador inicia y cierra sesión con cookie HttpOnly', async () => {
     const address = server.address();
     assert.ok(address && typeof address !== 'string');
     const baseUrl = `http://127.0.0.1:${address.port}`;
-    const login = await fetch(`${baseUrl}/api/auth/login`, {
+    const login = await fetchOriginal(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ usuario: 'gerente123@', contrasena: 'clave-correcta' }),
+      body: JSON.stringify({ usuario: 'manager@example.com', contrasena: 'test-password' }),
     });
     assert.equal(login.status, 200);
+    assert.deepEqual(solicitudApi, { nvMail: 'manager@example.com', nvPass: 'test-password' });
+    assert.deepEqual((await login.json()).usuario, {
+      id: 'testuser',
+      nombre: 'manager@example.com',
+      rol: 'Gerente',
+    });
     const cookie = login.headers.get('set-cookie');
     assert.ok(cookie?.includes('HttpOnly'));
     assert.ok(cookie?.includes('SameSite=Strict'));
+    const token = cookie?.match(/scrapcontrol_session=([^;]+)/)?.[1];
+    assert.ok(token);
+    const payload = JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString('utf8'));
+    assert.equal(JSON.stringify(payload).includes('test-password'), false);
 
-    const logout = await fetch(`${baseUrl}/api/auth/logout`, { method: 'POST' });
+    const logout = await fetchOriginal(`${baseUrl}/api/auth/logout`, { method: 'POST' });
     assert.equal(logout.status, 200);
     assert.ok(logout.headers.get('set-cookie')?.includes('scrapcontrol_session=;'));
   } finally {
@@ -207,6 +137,7 @@ test('el controlador inicia y cierra sesión con cookie HttpOnly', async () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+    globalThis.fetch = fetchOriginal;
   }
 });
 

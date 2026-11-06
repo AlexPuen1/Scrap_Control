@@ -2,7 +2,7 @@
 
 **Una vista práctica para consultar y dar seguimiento a movimientos de Scrap.**
 
-SCRAPControl es una aplicación web interna que reúne información de movimientos registrados en la base corporativa **SOE**. Ayuda a los equipos a revisar qué ocurrió, cuándo, en qué certificación o línea, y qué razón está asociada con cada movimiento. También permite registrar un dictamen. Gerente y Superintendente usan credenciales locales; Administrador puede usar una cuenta local o Windows Authentication mediante IIS.
+SCRAPControl es una aplicación web interna que reúne información de movimientos registrados en la base corporativa **SOE**. Ayuda a los equipos a revisar qué ocurrió, cuándo, en qué certificación o línea, y qué razón está asociada con cada movimiento. También permite registrar un dictamen. El inicio de sesión valida las credenciales en el servicio corporativo `ad_mailVal`; los usuarios reciben rol Gerente y el correo configurado para Administrador recibe ese rol.
 
 ## Inicio rápido
 
@@ -12,7 +12,7 @@ Requiere Node.js 24 o posterior y npm. Desde la raíz del proyecto, ejecuta:
 npm run iniciar
 ```
 
-El comando instala las dependencias del proyecto y sus dos aplicaciones; si es la primera vez, solicita los usuarios y contraseñas de Gerente, Superintendente y Administrador, genera la configuración local y después inicia backend y frontend. Las contraseñas se guardan como hashes en `BaseDeDatos/.env`, que no se versiona. En Windows también puedes ejecutar `iniciar.bat`. Abre `http://localhost:5173`; para consultar datos de SOE, el equipo debe tener acceso a la API corporativa.
+El comando instala las dependencias y, si falta configuración, solicita el correo que recibirá rol Administrador y genera un secreto de sesión. Las contraseñas se validan en la API corporativa y no se guardan localmente. Abre `http://localhost:5173`; el login y los datos de SOE requieren acceso a las API corporativas. En Windows también puedes ejecutar `iniciar.bat`.
 
 > **En pocas palabras:** consulta información operativa, la organiza en listas y gráficas, y facilita revisar movimientos pendientes. No reemplaza los sistemas corporativos ni decide por sí misma qué debe aprobarse.
 
@@ -38,7 +38,7 @@ El equipo revisa listas, fichas, indicadores y reportes
 Cuando corresponde, registra un dictamen autorizado
 ```
 
-La aplicación obtiene información mediante un servicio corporativo. Algunas pantallas consultan datos directamente para generar sus resúmenes; otras filtran o agrupan los registros que ya se cargaron. Los cambios de dictamen y de razón se guardan en la base corporativa, no solo en la pantalla. El backend valida las credenciales locales y aplica también las restricciones por rol; las contraseñas se configuran como hashes scrypt en el entorno privado.
+La aplicación obtiene información mediante servicios corporativos. Algunas pantallas consultan datos directamente para generar sus resúmenes; otras filtran o agrupan los registros que ya se cargaron. Los cambios de dictamen y de razón se guardan en la base corporativa, no solo en la pantalla. El backend valida la cuenta con `ad_mailVal` y aplica las restricciones por rol; no almacena la contraseña.
 
 La interfaz usa fuentes disponibles en el equipo y no descarga tipografías de terceros al abrirse; la conexión que la aplicación necesita con SOE sigue siendo un destino de red independiente.
 
@@ -59,7 +59,7 @@ La interfaz usa fuentes disponibles en el equipo y no descarga tipografías de t
 
 En el Dashboard, la gráfica **Aprobaciones por responsable** permite elegir entre todas las filas aprobadas de la tabla y las aprobaciones del periodo seleccionado. El conteo usa `aprobado = 1`, agrupa por `nvAprobadoPor` y, al elegir el periodo, delimita por la fecha de aprobación `dtAprobado`. No filtra por tipo de movimiento.
 
-Gerente y Superintendente usan credenciales locales; Administrador puede iniciar sesión con credenciales locales o Windows Authentication. Las contraseñas locales se verifican en el backend contra hashes scrypt y no se guardan en archivos versionados. Los tres roles acceden a Movimientos, Aprobaciones y Precio. Las funciones administrativas tienen restricciones adicionales por rol. En Movimientos, la columna **Supervisor** muestra el valor de `dbo.Movimientos.Empleado`.
+El servicio corporativo valida cada cuenta. Todos los accesos válidos reciben rol Gerente, excepto el correo configurado en `AUTH_ADMIN_EMAIL`, que recibe rol Administrador. Ambos roles acceden a Movimientos, Aprobaciones y Precio; las funciones administrativas tienen restricciones adicionales. En Movimientos, la columna **Supervisor** muestra el valor de `dbo.Movimientos.Empleado`.
 
 En **Precio**, el backend relaciona cada movimiento Scrap con una sola fila de precio por `MATNR`, seleccionando el `VAL_UNIT` numérico de semana más reciente disponible en `InventarioDB.dbo.MRP_Result_by_week_test`. Los materiales sin precio aparecen como “Sin precio” y no suman al valor USD. Es una estimación operativa, no un costo contable oficial; las cuatro tarjetas ocultan decimales solo para facilitar lectura y la tabla muestra hasta tres.
 
@@ -89,7 +89,7 @@ Al rechazar movimientos Scrap, la aplicación solicita un comentario y lo muestr
 
 ## Acceso
 
-La versión productiva requiere HTTPS y un proxy IIS/ARR hacia Express. Anonymous Authentication debe estar habilitada para el sitio y Windows Authentication configurada únicamente para `/api/auth/windows`; IIS debe sobrescribir los encabezados internos de esa ruta. No despliegues secretos en el frontend ni expongas directamente el puerto Express. Consulta [Configuración de IIS](IIS-Windows-Authentication.md).
+La versión productiva requiere HTTPS hacia el frontend y acceso del backend a las API corporativas de autenticación y datos. No despliegues secretos en el frontend ni expongas directamente el puerto Express. Consulta [Autenticación corporativa](Autenticacion-API.md).
 
 ### Información que no debe interpretarse como dato oficial
 
@@ -107,11 +107,11 @@ Las gráficas describen los registros que la aplicación consultó. Una variaci�
 
 ## Acceso y soporte técnico
 
-SCRAPControl está pensado para uso interno detrás de HTTPS y un proxy configurado; Express escucha solo en `127.0.0.1`. El backend exige una cookie de sesión firmada para las rutas API protegidas y aplica restricciones de rol a algunas operaciones; CORS no sustituye autenticación ni autorización. El acceso Windows depende de configurar y probar IIS/ARR como único proxy y de que reemplace los encabezados de identidad. No exponga Express directamente en una red compartida o públicamente. Consulte [Registro de seguridad](SECURITY-REPORT.md) y [Configuración de IIS](IIS-Windows-Authentication.md).
+SCRAPControl está pensado para uso interno detrás de HTTPS; Express escucha solo en `127.0.0.1`. El backend valida las credenciales mediante `ad_mailVal`, firma una cookie de sesión y aplica restricciones de rol; CORS no sustituye autenticación ni autorización. No exponga Express directamente en una red compartida o públicamente. Consulte [Registro de seguridad](SECURITY-REPORT.md) y [Autenticación corporativa](Autenticacion-API.md).
 
 ## Cambios recientes
 
-El 6 de noviembre de 2026 se implementó el acceso híbrido con hashes de contraseñas locales, cookie HttpOnly firmada, login/logout y autorización de endpoints; Gerente, Superintendente y Administrador local se configuraron fuera de Git, y Windows Authentication se conserva para Administrador. La integración IIS/ARR real aún está pendiente de validación.
+El 6 de noviembre de 2026 se cambió el login a la API `ad_mailVal`; las contraseñas ya no se almacenan localmente. El correo configurado como Administrador determina el único rol administrativo; el resto de cuentas validadas recibe rol Gerente. La aplicación conserva sesiones firmadas y autorización de endpoints.
 
 El 5 de noviembre de 2026 se agregó Precio: valorización paginada del Scrap por MATNR usando la fila numérica de `VAL_UNIT` más reciente por material, con tarjetas de resumen por periodo. No se debe tratar como dato contable oficial y la disponibilidad de precios depende de InventarioDB.
 

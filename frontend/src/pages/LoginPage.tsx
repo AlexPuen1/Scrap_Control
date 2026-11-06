@@ -1,19 +1,17 @@
 import React, { useState } from 'react';
-import { Factory, ShieldCheck } from 'lucide-react';
+import { Factory } from 'lucide-react';
 import { Button } from '../components/common/Button';
 
 interface LoginPageProps {
   cargando: boolean;
   error: string | null;
   onIniciarSesion: (usuario: string, contrasena: string) => Promise<void>;
-  onIniciarSesionWindows: () => Promise<void>;
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({
   cargando,
   error,
   onIniciarSesion,
-  onIniciarSesionWindows,
 }) => {
   const [usuario, setUsuario] = useState('');
   const [contrasena, setContrasena] = useState('');
@@ -34,7 +32,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
   const enviarFormulario = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void ejecutar(() => onIniciarSesion(usuario, contrasena));
+    const contrasenaEnviada = contrasena;
+    setContrasena('');
+    void ejecutar(() => onIniciarSesion(usuario, contrasenaEnviada));
   };
 
   return (
@@ -46,19 +46,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           </span>
           <div>
             <h1 className="text-xl font-bold">SCRAPControl</h1>
-            <p className="text-sm text-slate-400">Inicia sesión con tu cuenta autorizada</p>
+            <p className="text-sm text-slate-400">Inicia sesión con tu cuenta corporativa</p>
           </div>
         </div>
 
         <form className="space-y-4" onSubmit={enviarFormulario}>
           <label className="block text-sm font-medium text-slate-300">
-            Usuario
+            Correo corporativo
             <input
               autoComplete="username"
               className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-slate-100 outline-none focus:border-blue-500"
               disabled={cargando || procesando}
               onChange={(event) => setUsuario(event.target.value)}
               required
+              type="email"
               value={usuario}
             />
           </label>
@@ -83,22 +84,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             {procesando ? 'Validando…' : 'Iniciar sesión'}
           </Button>
         </form>
-
-        <div className="my-5 flex items-center gap-3 text-xs text-slate-500">
-          <span className="h-px flex-1 bg-slate-800" />
-          <span>o</span>
-          <span className="h-px flex-1 bg-slate-800" />
-        </div>
-
-        <Button
-          className="w-full justify-center"
-          variant="secondary"
-          disabled={cargando || procesando}
-          onClick={() => void ejecutar(onIniciarSesionWindows)}
-        >
-          <ShieldCheck className="mr-2 h-4 w-4" />
-          {procesando ? 'Validando…' : 'Continuar con Windows (Administrador)'}
-        </Button>
       </section>
     </main>
   );
