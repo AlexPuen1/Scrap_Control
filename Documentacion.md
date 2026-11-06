@@ -41,6 +41,8 @@ React (frontend)
 
 El navegador no recibe la URL corporativa ni manda comandos SQL. Node solicita `server`, `db` y `command` a la API con `Content-Type: application/json`. No se configura usuario/contraseña SQL en el cliente local ni se usa ODBC. La identidad y autorización del siguiente salto, API→SQL, las administra la organización y no se deducen del código.
 
+El backend también consulta `InventarioDB.dbo.MRP_Result_by_week_test` para la página Precio: relaciona el material por `MATNR` y no entrega la tabla semanal completa al navegador.
+
 ## 3. Instalación, configuración y comandos
 
 ### Requisitos
@@ -76,7 +78,7 @@ El frontend de Vite usa normalmente `http://localhost:5173`; Express escucha sol
 | `DB_API_TIMEOUT` | Timeout de `fetch` en milisegundos (por defecto `20000`). |
 | `AUTH_MANAGER_USERNAME`, `AUTH_MANAGER_PASSWORD_SALT`, `AUTH_MANAGER_PASSWORD_HASH` | Cuenta local de Gerente y hash scrypt de su contraseña. |
 | `AUTH_SUPERINTENDENTE_USERNAME`, `AUTH_SUPERINTENDENTE_PASSWORD_SALT`, `AUTH_SUPERINTENDENTE_PASSWORD_HASH` | Cuenta local de Superintendente y hash scrypt de su contraseña. |
-| `AUTH_ADMIN_USERNAME`, `AUTH_ADMIN_PASSWORD_SALT`, `AUTH_ADMIN_PASSWORD_HASH` | Cuenta local opcional de Administrador. |
+| `AUTH_ADMIN_USERNAME`, `AUTH_ADMIN_PASSWORD_SALT`, `AUTH_ADMIN_PASSWORD_HASH` | Credenciales locales adicionales de Administrador; Windows Authentication se conserva como alternativa. |
 | `AUTH_SESSION_SECRET` | Secreto de al menos 32 bytes para firmar las cookies de sesión. |
 | `WINDOWS_ADMIN_USERS` | Cuentas Windows/UPN autorizadas como Administrador, separadas por coma. |
 | `WINDOWS_AUTH_PROXY_KEY` | Secreto compartido entre IIS y Express para la ruta de inicio Windows. |
@@ -164,6 +166,7 @@ La comparación es independiente de los rangos de Dashboard, Reportes y Fallas p
 | `GET` | `/api/health` | `status`, fecha, tipo de DB, estado más reciente y nombres de tabla como metadatos estáticos. Público. |
 | `GET` | `/api/movimientos` | `{ exitoso, datos, conteo }`; acepta fechas y filtros opcionales `tipoId`, `aprobado`, `razonId`, `certificacionId`, `lineaId`, `almacen`, `busqueda`. |
 | `GET` | `/api/movimientos/aprobaciones` | `{ exitoso, datos: [{ nombre, aprobaciones }], total }`; siempre `aprobado = 1`, agrupado por `nvAprobadoPor`; fechas opcionales para limitar por `dtAprobado`. |
+| `GET` | `/api/movimientos/precios?periodo=...&pagina=...&limite=...&incluirResumen=...` | Valorización Scrap usando `VAL_UNIT` por `MATNR`; los tres roles autenticados pueden usarlo. |
 | `GET` | `/api/movimientos/comparativa-mensual?mes=YYYY-MM` | `{ exitoso, periodos, datos }`; agregado del mes seleccionado y el anterior; solo Administrador. |
 | `GET` | `/api/movimientos/fallas-por-linea` | `{ exitoso, periodo, datos }`; periodo reciente calculado en el servidor; solo Administrador. |
 | `GET` | `/api/movimientos/razones?movimientoTipoId=N` | `{ exitoso, datos: [{ id, descripcion }] }`; requiere tipo entero positivo y rol Administrador. |
@@ -239,8 +242,9 @@ Rutas React bajo `MainLayout`:
 |---|---|---|
 | `/dashboard` | `DashboardPage` | Solo Administrador autorizado: filtro de fechas, tendencia, SCRAP por línea desglosado por motivo, Top de razones y gráficas por empleado/aprobador. |
 | `/movimientos` | `MovimientosPage` | Tabla con `Empleado` presentado como Supervisor, fecha de emisión y aprobación, filtros guiados compartidos, orden, paginación visual y CSV. |
-| `/movimientos/:id` | `MovimientoDetallePage` | Ficha y edición persistente de razón. Usa el movimiento presente en el contexto; no hace una solicitud de detalle por separado. |
+| `/movimientos/:id` | `MovimientoDetallePage` | Ficha; Administrador puede editar persistentemente la razón. |
 | `/aprobaciones` | `AprobacionesPage` | Indicadores de Scrap/pendientes/aprobados/rechazados que filtran la tabla, columna Supervisor (`dbo.Movimientos.Empleado`), filtros compartidos, paginación de 10/25/50 filas, selección y dictamen para pendientes. |
+| `/precio` | `PrecioPage` | Disponible para los tres roles; tarjetas de resumen por periodo y detalle paginado de Scrap valorizado en USD. |
 | `/fallas-por-linea` | `FallasPorLineaPage` | Agregado SQL, periodo, búsqueda local, barras horizontales y tabla. |
 | `/reportes` | `ReportesPage` | Filtrado y agrupación de movimientos cargados; con ambas fechas seleccionadas, consulta al backend el rango inclusivo solicitado. |
 | `/comparativa-mensual` | `ComparativaMensualPage` | Solo Administrador autorizado; comparación mensual SQL para cuatro gráficas, con descripción de razón, picos y estados de error/sin datos. |
@@ -250,13 +254,15 @@ Rutas React bajo `MainLayout`:
 
 `ScrapContext` carga los movimientos por periodo predeterminado. Al dictaminar se recarga ese contexto; en cambio, el rango del Dashboard se guarda localmente a su pantalla hasta usar «Último mes». El Dashboard muestra conteos/cantidades por `aprobado`, pero sus KPIs no son contadores «de hoy» necesariamente: se calculan sobre el conjunto del periodo. El KPI de costos y tasas usa valores fijos/cero por falta de integración.
 
+La pantalla Precio solo incluye `MovimientoTipoId = 1`. El backend compara `MATNR` normalizado entre `dbo.Movimientos` y `InventarioDB.dbo.MRP_Result_by_week_test`, elige una sola fila por material con `VAL_UNIT` numérico y `WEEK_A` numérica de semana más reciente, y calcula `cantidad × VAL_UNIT`. Los materiales sin precio quedan separados y no se suman al monto. El API calcula el resumen para el periodo y pagina únicamente el detalle (10/25/50); la pantalla conserva el resumen al cambiar página o tamaño para no volver a solicitarlo. Las tarjetas muestran importes sin decimales y el detalle hasta tres, solo como presentación: los cálculos conservan precisión. El importe es una valorización estimada, no un costo oficial contable.
+
 La gráfica de aprobaciones consulta `/api/movimientos/aprobaciones` separadamente del conjunto compartido: «Todas las aprobaciones» no envía fechas; «Mes seleccionado» envía el periodo aplicado (fin exclusivo) y filtra por `dtAprobado`. Cuenta filas con `aprobado = 1`, sin filtrar tipo, y agrupa por `nvAprobadoPor`. Las barras incluyen todos los responsables y nombres vacíos. Por tanto, en modo mensual la suma puede no coincidir con una consulta SQL que filtre por `fecha_hora`; para comparar deben usarse `dtAprobado`, el mismo rango y el mismo predicado `aprobado = 1`.
 
 Movimientos y Aprobaciones comparten controles grandes de búsqueda por folio/serial/material, fechas con calendario, estado, tipo, razón, certificación, línea y almacén. La razón se habilita al elegir tipo. Las fechas predeterminadas corresponden al intervalo de los movimientos cargados. Aprobaciones agrega cuatro tarjetas: total de piezas Scrap, pendientes, aprobados y rechazados; las tres tarjetas de estado filtran el listado, y Total de piezas muestra todos los estados sin modificar los demás filtros. Las acciones de dictamen solo aparecen en filas pendientes.
 
 La vista Filtros paso a paso propone el mes calendario de la fecha más reciente disponible. El usuario puede elegir filtros y pulsa Buscar para enviarlos a `GET /api/movimientos`; el servidor valida parámetros, consulta el rango y aplica los criterios disponibles sobre el resultado. La fecha final elegida se convierte al límite exclusivo del día siguiente. Cambiar una opción no ejecuta una llamada hasta pulsar Buscar.
 
-La tabla de Movimientos presenta `dbo.Movimientos.Empleado` bajo la columna Supervisor y `dtAprobado` como Fecha aprobación; un registro pendiente muestra “Sin aprobar”. Dashboard, Comparación mensual y Filtros paso a paso son exclusivos de Administrador. Por ahora solo la cuenta `alejandro.puente1@magna.com` se configura como Administrador; otras cuentas son denegadas tanto por rutas API como por la interfaz.
+La tabla de Movimientos presenta `dbo.Movimientos.Empleado` bajo la columna Supervisor y `dtAprobado` como Fecha aprobación; un registro pendiente muestra “Sin aprobar”. Gerente y Superintendente tienen acceso de interfaz a Movimientos, Aprobaciones y Precio. Dashboard, Fallas por línea, Reportes, Comparación mensual, Filtros paso a paso, Motivos y Configuración son exclusivos de Administrador.
 
 Las tablas de Movimientos y Aprobaciones permiten desplazamiento horizontal cuando no caben en la pantalla y envuelven los valores largos en varias líneas para evitar recortes o puntos suspensivos. En pantallas pequeñas la tabla puede ocupar más ancho que el viewport; se desplaza dentro de su contenedor.
 
@@ -269,21 +275,21 @@ Motivos/notificaciones se inicializan de datos de `frontend/src/mock/data.ts` y 
 - `GET /api/health` es una instantánea del último estado, no un chequeo por petición. Una respuesta `online` no asegura que la próxima consulta corporativa funcione.
 - La lista de movimientos no tiene paginación de servidor. El volumen del periodo se descarga a Node y se envía al frontend; filtros de certificación/razón siguen aplicándose en memoria. En Reportes, al elegir ambas fechas se vuelve a consultar ese intervalo en el servidor (fin inclusivo); evita rangos innecesariamente amplios.
 - La API corporativa es un ejecutor SQL genérico. El backend controla sus propias llamadas, pero los permisos efectivos deben restringirse en el servicio corporativo.
-- Todas las rutas `/api` requieren identidad validada por IIS, secreto compartido del proxy y cuenta Windows en la lista autorizada. El backend guarda la identidad autenticada en `nvAprobadoPor`; no acepta un nombre de responsable de parte del navegador.
-- Antes de publicar, completar el despliegue integrado IIS/Windows Authentication/ARR para `/api/auth/windows`, configurar los orígenes CORS reales, TLS, secretos privados, permisos mínimos de la API y paginación/filtrado SQL si hace falta. La prueba unitaria no sustituye la validación del dominio en IIS.
+- Las rutas `/api` operativas requieren una cookie HttpOnly de sesión firmada. Login local está disponible para los tres roles; Windows Authentication se limita al intercambio de identidad de Administrador en `/api/auth/windows`.
+- Antes de publicar, completar y probar el despliegue IIS/ARR para `/api/auth/windows`, reemplazo de encabezados, CORS real, TLS y protección de secretos. Express debe permanecer en loopback y no exponerse directamente.
 - No poner secretos en `.md`, repositorio ni logs. Mantener HTTPS y certificados confiables.
 
 Para detalles de conexión y campos, consultar [Conexión a datos](BaseDeDatos/ConexionBaseDatos.md) y [Diccionario de datos](BaseDeDatos/Diccionario_Datos_Movimientos.md).
 
 La interfaz usa fuentes del sistema disponibles en el equipo y no carga tipografías desde Google Fonts ni desde otros servidores externos. Esto evita solicitudes externas de recursos de presentación y permite mostrar las pantallas sin acceso a Internet; no elimina la conexión corporativa requerida por el backend para consultar SOE.
 
-## Autenticación de Windows
+## Autenticación y autorización
 
-El frontend consulta `GET /api/auth/me` al iniciar. Gerente y Superintendente usan credenciales locales con hashes scrypt configurados en `BaseDeDatos/.env`; Administrador puede iniciar sesión localmente si se configura esa cuenta o usar Windows Authentication en IIS. El backend firma una cookie HttpOnly con expiración y aplica las restricciones por rol también en las rutas. No confía en un rol enviado por el frontend. Consulta [Configuración de IIS](IIS-Windows-Authentication.md).
+El frontend consulta `GET /api/auth/me` al iniciar. `POST /api/auth/login` valida las credenciales locales configuradas para Gerente, Superintendente y Administrador con hashes scrypt; Administrador también puede usar Windows Authentication en IIS. El backend firma una cookie HttpOnly con expiración de ocho horas y aplica restricciones de rol en las rutas protegidas. No confía en un rol enviado por el frontend.
 
-Express escucha solo en loopback. Los dictámenes guardan la identidad de la sesión en `nvAprobadoPor`; el cliente no puede suplantarla. El inicio Windows integrado con IIS/ARR no se probó en este equipo; las pruebas automatizadas no certifican la negociación Kerberos/NTLM. Consulta [Configuración de IIS](IIS-Windows-Authentication.md).
+Express escucha solo en loopback. Dashboard y otras páginas administrativas también están restringidas en la interfaz; el backend reserva explícitamente para Administrador las rutas de razones, edición de razones, fallas por línea y comparación mensual. Los dictámenes registran el nombre asociado a la sesión en `nvAprobadoPor`; los tres roles autenticados tienen acceso al flujo de dictamen. No se debe confundir el ocultamiento de páginas frontend con la autorización de cada endpoint. El inicio Windows integrado con IIS/ARR no se probó en este equipo; las pruebas automatizadas no certifican la negociación Kerberos/NTLM. Consulta [Configuración de IIS](IIS-Windows-Authentication.md).
 
-La pantalla Aprobaciones muestra tarjetas de total de piezas Scrap, pendientes, aprobados y rechazados; las tarjetas de estado filtran las filas y solo las pendientes conservan botones de dictamen. Movimientos y Aprobaciones usan el mismo panel guiado de búsqueda. La ruta Filtros paso a paso consulta por rango y criterios al pulsar Buscar. La tabla de Movimientos presenta `dbo.Movimientos.Empleado` en Supervisor y `dtAprobado` en Fecha aprobación. Al pulsar Aprobar o Denegar se muestra un diálogo de confirmación y el comentario obligatorio al denegar Scrap; el responsable se obtiene del inicio de sesión Windows.
+La pantalla Aprobaciones muestra tarjetas de total de piezas Scrap, pendientes, aprobados y rechazados; las tarjetas de estado filtran las filas y solo las pendientes conservan botones de dictamen. Movimientos y Aprobaciones usan el mismo panel guiado de búsqueda. La ruta Filtros paso a paso consulta por rango y criterios al pulsar Buscar. La tabla de Movimientos presenta `dbo.Movimientos.Empleado` en Supervisor y `dtAprobado` en Fecha aprobación. Al pulsar Aprobar o Denegar se muestra un diálogo de confirmación y el comentario obligatorio al denegar Scrap; el responsable se obtiene de la sesión autenticada.
 
 El Dashboard muestra piezas Scrap por línea en barras apiladas por motivo. El nombre abreviado del motivo se imprime dentro de cada segmento de color; los segmentos pequeños se amplían visualmente para que el texto quepa y la referencia inferior conserva los nombres completos. Por esta expansión, la longitud de los segmentos pequeños no es proporcional a las piezas: consultar el tooltip para cantidades exactas. «TOP RAZONES SCRAP» permanece debajo a ancho completo. Las gráficas administrativas muestran suma de `cantidad` Scrap por `Empleado` y conteo de filas con `aprobado = 1`, agrupadas por `nvAprobadoPor`; cuentan estado actual, no historial de dictámenes.
 

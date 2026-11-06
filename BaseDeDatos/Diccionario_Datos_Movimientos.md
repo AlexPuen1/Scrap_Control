@@ -30,7 +30,7 @@ La consulta ordinaria obtiene `movimiento.*` y añade `LineaId` y `DescripcionRa
 | `almacen` | `varchar(50)` | Sí | Almacén presentado en lista/ficha cuando existe. |
 | `serial` | `varchar(50)` | Sí | Serial mostrado junto con ID y ficha; también se usa en búsquedas y marbete visual. |
 | `MATNR_FG` | `varchar(50)` | Sí | Número de parte de producto terminado, se presenta cuando existe. |
-| `nvAprobadoPor` | `nvarchar(200)` | Sí | Texto capturado en el formulario de dictamen; no es una identidad autenticada. |
+| `nvAprobadoPor` | `nvarchar(200)` | Sí | Nombre asociado a la sesión autenticada que registra el dictamen; el backend no acepta este nombre desde el cuerpo del navegador. |
 | `dtAprobado` | `datetime` | Sí | Fecha/hora asignada por SQL Server con `GETDATE()` al guardar el dictamen. |
 
 ### Campos derivados (no físicos en `dbo.Movimientos`)
@@ -43,9 +43,9 @@ La consulta ordinaria obtiene `movimiento.*` y añade `LineaId` y `DescripcionRa
 
 ### Dictamen y edición
 
-La ruta individual actualiza campos del dictamen exclusivamente cuando `id` coincide y `aprobado = 0`. Para aprobar escribe 1; para rechazar escribe 4; además asigna `nvAprobadoPor` y `dtAprobado`. No modifica registros con `aprobado IS NULL` o distinto de 0. El nombre capturado no comprueba que quien lo escribió sea gerente o el empleado indicado.
+La ruta individual actualiza campos del dictamen exclusivamente cuando `id` coincide y `aprobado = 0`. Para aprobar escribe 1; para rechazar escribe 4; además asigna `nvAprobadoPor` y `dtAprobado`. No modifica registros con `aprobado IS NULL` o distinto de 0. Los tres roles autenticados pueden solicitar dictamen; la identidad registrada deriva de la sesión verificada por el servidor, no de un nombre escrito en el formulario.
 
-La edición de razón solo escribe `RazonId`. Las opciones no son texto libre: el backend las valida contra el tipo del movimiento en `dbo.vw_Scrap_PowerBI`. El valor `null` limpia la razón. Aunque el endpoint permanece en el código, el middleware actual responde 403 a esta operación. El dictamen sí escribe datos reales y el backend no autentica usuarios.
+La edición de razón solo escribe `RazonId` y requiere rol Administrador. Las opciones no son texto libre: el backend las valida contra el tipo del movimiento en `dbo.vw_Scrap_PowerBI`. El valor `null` limpia la razón. Ambas operaciones escriben datos reales y requieren una sesión autenticada.
 
 ## `dbo.Certificacion`
 
@@ -85,6 +85,12 @@ El selector agrupa por `RAZONid`, ignora descripciones nulas/vacías y muestra e
 
 `dbo.MovimientoTipo` tampoco se consulta como catálogo en vivo; las etiquetas se resuelven mediante un mapa local del repositorio y opciones del frontend. El módulo **Motivos** presenta un catálogo local/de referencia y no actualiza ni esta vista ni otro catálogo SQL.
 
+## Inventario semanal y precios de Scrap
+
+La pantalla **Precio** consulta además `InventarioDB.dbo.MRP_Result_by_week_test`; esta tabla no forma parte de `dbo.Movimientos` y sus campos no se incluyen como columnas físicas en el diccionario anterior. La aplicación relaciona `MATNR` normalizado de cada movimiento Scrap con `MATNR` de inventario y selecciona por material una sola fila con `VAL_UNIT` convertible a número y `WEEK_A` convertible a semana numérica, ordenada desde la semana más reciente. No se exige que `WEEK_A` corresponda a la semana de `fecha_hora`; el mismo precio más reciente se aplica a los movimientos de ese material en el periodo elegido. El tipo físico y la nulabilidad de estas columnas de inventario no se documentan aquí sin una verificación de esquema vigente.
+
+El total es la suma de `cantidad × VAL_UNIT`; el promedio mostrado es ponderado por piezas con precio. Las piezas sin precio se contabilizan aparte y no se suman al valor total. El endpoint permite periodos de mes actual, últimos dos/seis meses, año a la fecha o histórico y pagina el detalle. El formato de las tarjetas sin decimales y el detalle hasta tres decimales es únicamente visual; no representa costo contable ni cambia la precisión del valor retornado por SQL.
+
 ## Cálculos e interpretación
 
 - Scrap se identifica por `MovimientoTipoId = 1`.
@@ -95,7 +101,7 @@ El selector agrupa por `RAZONid`, ignora descripciones nulas/vacías y muestra e
 - `/api/movimientos/comparativa-mensual` contrasta el mes calendario seleccionado con el anterior. Tendencia, razón y línea limitan a Scrap tipo 1; certificación incluye todos los tipos.
 - La comparación mensual resume el máximo observado por métrica y periodo en sus tarjetas; las barras distinguen visualmente mes anterior y mes seleccionado, y los valores del tooltip son blancos. El máximo no es un umbral de riesgo ni una clasificación oficial de calidad.
 - Reportes agrupa y filtra sobre movimientos ya cargados. Su fecha hasta es inclusiva en el navegador.
-- Costos se muestran como cero/locales cuando no hay fuente oficial integrada; no usarlos para contabilidad.
+- El KPI de costos del Dashboard continúa sin fuente oficial integrada. La pantalla Precio presenta una valorización estimada separada basada en `VAL_UNIT`; no usar ninguna de estas cifras para contabilidad.
 - La exportación CSV usa columnas explícitas y excluye `credencial`, identificadores/nombres de empleado y campos del responsable del dictamen.
 
 ## Evidencia de consultas históricas

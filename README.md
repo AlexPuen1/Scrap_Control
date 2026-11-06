@@ -40,6 +40,7 @@ La interfaz usa fuentes disponibles en el equipo y no descarga tipografías de t
 | **Movimientos** | Buscar por filtros guiados compartidos, consultar fecha de aprobación, abrir la ficha y exportar resultados a CSV. |
 | **Ficha del movimiento** | Consultar los datos disponibles del registro y editar la razón si la cuenta está autorizada como Administrador. |
 | **Aprobaciones** | Consultar piezas Scrap, pendientes, aprobados y rechazados; las tarjetas filtran el listado. Permite emitir dictámenes de pendientes. |
+| **Precio** | Consultar la valorización estimada en USD del Scrap usando cantidad y `VAL_UNIT` relacionado por `MATNR`; disponible para los tres roles. |
 | **Filtros paso a paso** | Para Administradores autorizados: elegir un mes y criterios; los resultados se consultan al pulsar Buscar. |
 | **Fallas por línea** | Consultar un resumen de cantidad y número de movimientos de Scrap por línea para un periodo reciente calculado por el sistema. |
 | **Comparación mensual** | Para Administradores autorizados: comparar el mes elegido con el anterior. |
@@ -48,7 +49,9 @@ La interfaz usa fuentes disponibles en el equipo y no descarga tipografías de t
 
 En el Dashboard, la gráfica **Aprobaciones por responsable** permite elegir entre todas las filas aprobadas de la tabla y las aprobaciones del periodo seleccionado. El conteo usa `aprobado = 1`, agrupa por `nvAprobadoPor` y, al elegir el periodo, delimita por la fecha de aprobación `dtAprobado`. No filtra por tipo de movimiento.
 
-Por ahora, solo la cuenta Windows configurada como Administrador tiene acceso. Las demás cuentas se deniegan en el backend hasta que se les asigne un rol. En Movimientos, la columna **Supervisor** muestra el valor de `dbo.Movimientos.Empleado`.
+Gerente y Superintendente usan credenciales locales; Administrador puede iniciar sesión con credenciales locales o Windows Authentication. Las contraseñas locales se verifican en el backend contra hashes scrypt y no se guardan en archivos versionados. Los tres roles acceden a Movimientos, Aprobaciones y Precio. Las funciones administrativas tienen restricciones adicionales por rol. En Movimientos, la columna **Supervisor** muestra el valor de `dbo.Movimientos.Empleado`.
+
+En **Precio**, el backend relaciona cada movimiento Scrap con una sola fila de precio por `MATNR`, seleccionando el `VAL_UNIT` numérico de semana más reciente disponible en `InventarioDB.dbo.MRP_Result_by_week_test`. Los materiales sin precio aparecen como “Sin precio” y no suman al valor USD. Es una estimación operativa, no un costo contable oficial; las cuatro tarjetas ocultan decimales solo para facilitar lectura y la tabla muestra hasta tres.
 
 ## ¿Qué significa cada estado del dictamen?
 
@@ -72,9 +75,9 @@ Al rechazar movimientos Scrap, la aplicación solicita un comentario y lo muestr
 | Permite revisar motivos en sus pantallas. | Sincroniza el catálogo local de «Motivos» con el catálogo corporativo usado para corregir razones. |
 | Muestra una comparación de periodos para facilitar el análisis. | Define por sí misma metas, límites aceptables, costos oficiales, OEE o causas raíz. |
 
-**Antes de registrar un dictamen:** verifique que el movimiento sea el correcto y que el cambio esté autorizado según el proceso de su área. El dictamen es persistente; la aplicación no ofrece una función para deshacerlo. El backend registra como responsable la identidad de Windows autenticada, no un nombre enviado por el navegador.
+**Antes de registrar un dictamen:** verifique que el movimiento sea el correcto y que el cambio esté autorizado según el proceso de su área. El dictamen es persistente; la aplicación no ofrece una función para deshacerlo. El backend registra como responsable la identidad asociada a la sesión autenticada, no un nombre enviado por el navegador.
 
-## Acceso de Windows
+## Acceso
 
 La versión productiva requiere HTTPS y un proxy IIS/ARR hacia Express. Anonymous Authentication debe estar habilitada para el sitio y Windows Authentication configurada únicamente para `/api/auth/windows`; IIS debe sobrescribir los encabezados internos de esa ruta. No despliegues secretos en el frontend ni expongas directamente el puerto Express. Consulta [Configuración de IIS](IIS-Windows-Authentication.md).
 
@@ -94,11 +97,15 @@ Las gráficas describen los registros que la aplicación consultó. Una variaci�
 
 ## Acceso y soporte técnico
 
-SCRAPControl está pensado para uso local: el backend escucha solo en `127.0.0.1`, mientras el equipo necesita acceso de red al servicio corporativo. La aplicación no inicia sesión por sí sola ni comprueba permisos de gerente; clientes locales todavía pueden invocar las rutas y las escrituras. El backend limita los orígenes web mediante `CORS_ORIGINS`, pero CORS no sustituye autenticación ni autorización. No exponga el backend en una red compartida o públicamente hasta implementar controles de identidad y permisos del lado servidor.
+SCRAPControl está pensado para uso interno detrás de HTTPS y un proxy configurado; Express escucha solo en `127.0.0.1`. El backend exige una cookie de sesión firmada para las rutas API protegidas y aplica restricciones de rol a algunas operaciones; CORS no sustituye autenticación ni autorización. El acceso Windows depende de configurar y probar IIS/ARR como único proxy y de que reemplace los encabezados de identidad. No exponga Express directamente en una red compartida o públicamente. Consulte [Registro de seguridad](SECURITY-REPORT.md) y [Configuración de IIS](IIS-Windows-Authentication.md).
 
 ## Cambios recientes
 
-El 2 de noviembre de 2026 se habilitó en el Dashboard el selector «Todas las aprobaciones» / «Mes seleccionado». La consulta agrupa por responsable, cuenta filas con `aprobado = 1` y usa `dtAprobado` solo para el modo mensual. Los archivos técnicos documentan el endpoint, las pruebas y los límites de identidad/autorización. La verificación no consultó ni escribió datos de SOE.
+El 6 de noviembre de 2026 se implementó el acceso híbrido con hashes de contraseñas locales, cookie HttpOnly firmada, login/logout y autorización de endpoints; Gerente, Superintendente y Administrador local se configuraron fuera de Git, y Windows Authentication se conserva para Administrador. La integración IIS/ARR real aún está pendiente de validación.
+
+El 5 de noviembre de 2026 se agregó Precio: valorización paginada del Scrap por MATNR usando la fila numérica de `VAL_UNIT` más reciente por material, con tarjetas de resumen por periodo. No se debe tratar como dato contable oficial y la disponibilidad de precios depende de InventarioDB.
+
+El 2 de noviembre de 2026 se habilitó en el Dashboard el selector «Todas las aprobaciones» / «Mes seleccionado». La consulta agrupa por responsable, cuenta filas con `aprobado = 1` y usa `dtAprobado` solo para el modo mensual. La verificación no consultó ni escribió datos de SOE.
 
 El 3 de noviembre de 2026 se recorrieron con Playwright las nueve pantallas administrativas en escritorio y móvil, con respuestas API simuladas y sin ejecutar escrituras. Se quitó la descarga de Google Fonts para evitar solicitudes externas y permitir el uso de fuentes del sistema sin conexión. La prueba no sustituye la validación con datos reales ni las pruebas de aceptación con RH/operación.
 

@@ -20,6 +20,7 @@ Interfaz React 19 + TypeScript + Vite. El frontend consume únicamente las rutas
 | `/movimientos` | `MovimientosPage` | Tabla con supervisor reportante (valor de `dbo.Movimientos.Empleado`), fecha de emisión y fecha de aprobación; filtros guiados y búsqueda. |
 | `/movimientos/:id` | `MovimientoDetallePage` | Encuentra el registro dentro del contexto cargado y presenta ficha/razón. Carga opciones de razón del backend y permite persistir su selección. |
 | `/aprobaciones` | `AprobacionesPage` | Cuatro indicadores clicables para piezas Scrap, pendientes, aprobados y rechazados; cada tarjeta filtra el listado. Incluye la columna Supervisor con el valor `dbo.Movimientos.Empleado`, los mismos filtros progresivos que Movimientos, paginación de 10/25/50 filas y dictamen individual/múltiple para pendientes. |
+| `/precio` | `PrecioPage` | Todos los roles autenticados. Valorización estimada de Scrap por `MATNR`, resumen por periodo y detalle paginado. |
 | `/fallas-por-linea` | `FallasPorLineaPage` | Solicita el agregado SQL independiente, su periodo y datos por línea; gráfica de barras horizontales, búsqueda y tabla. |
 | `/reportes` | `ReportesPage` | Filtra localmente el conjunto ya cargado, calcula resúmenes por certificación/MATNR y exporta CSV. |
 | `/comparativa-mensual` | `ComparativaMensualPage` | Solo Administrador autenticado. Compara el mes calendario elegido con el anterior y señala picos propios en cuatro métricas. |
@@ -48,6 +49,7 @@ Al iniciar, la aplicación consulta `GET /api/auth/me` usando una cookie HttpOnl
 | Opciones de razón | `GET /api/movimientos/razones?movimientoTipoId=N` | Descripciones válidas desde `dbo.vw_Scrap_PowerBI`. |
 | Guardar razón | `PATCH /api/movimientos/:id/razon` | `{ razonId: number | null }`; disponible solo para Administrador. |
 | Aprobar/rechazar | `PATCH /api/movimientos/:id/dictamen` | `{ aprobado: 1 | 4 }`; `1` aprueba y `4` rechaza; el servidor escribe la identidad de la sesión autenticada y cambia datos reales. |
+| Precio de Scrap | `GET /api/movimientos/precios?periodo=...&pagina=...&limite=...&incluirResumen=...` | Consulta Scrap y `VAL_UNIT` por `MATNR`; admite `mes`, `dos-meses`, `seis-meses`, `anio`, `historico`, tamaños de 10/25/50 y resumen opcional. |
 
 El cliente comprueba `response.ok`, `exitoso` y que exista la estructura de datos esperada. Si la llamada falla, propaga el error a la página/contexto; no sustituye una respuesta SQL fallida por movimientos mock.
 
@@ -62,12 +64,13 @@ El cliente comprueba `response.ok`, `exitoso` y que exista la estructura de dato
 - Filtros paso a paso propone por defecto el mes calendario de la fecha disponible más reciente. Al pulsar Buscar envía los filtros opcionales a `GET /api/movimientos`; no carga resultados nuevos mientras se cambian opciones.
 - La fecha de aprobación mostrada en Movimientos proviene de `dbo.Movimientos.dtAprobado`; los pendientes muestran “Sin aprobar”.
 - Las tablas de Movimientos y Aprobaciones permiten desplazamiento horizontal y envuelven el texto largo en varias líneas para mostrar completos los valores, sin truncarlos con puntos suspensivos.
-- Dashboard, Comparación mensual y Filtros paso a paso son exclusivos de Administrador. Actualmente solo `alejandro.puente1@magna.com` se configura con ese rol; el backend deniega otras cuentas.
+- Gerente y Superintendente tienen acceso de interfaz a Movimientos, Aprobaciones y Precio. Dashboard, Fallas por línea, Reportes, Comparación mensual, Filtros paso a paso, Motivos y Configuración son de Administrador. La autorización del backend se aplica por operación; ocultar una página en el frontend no equivale por sí solo a restringir todos los datos del API.
 - Aprobar o denegar una fila abre directamente un diálogo de confirmación, sin la pantalla intermedia de revisión. El responsable proviene de la sesión autenticada y no se captura manualmente; se mantiene el comentario obligatorio al rechazar Scrap.
 - El Dashboard consulta otro intervalo al pulsar **Buscar**. El error y rango personalizado corresponden a esa página; no reemplaza la lista compartida para las otras pantallas.
 - La gráfica de aprobaciones consulta en forma independiente. «Todas las aprobaciones» no usa rango; «Mes seleccionado» se sincroniza con el periodo aplicado del Dashboard y filtra por `dtAprobado`, fecha real del dictamen.
 - Reportes no solicita al backend el rango filtrado: reduce en memoria el conjunto cargado por el contexto. Por tanto no puede mostrar fechas que quedaron fuera de ese conjunto.
 - Fallas por línea es una consulta de agregado separada; no cambia con el rango del Dashboard.
+- Precio incluye solo `MovimientoTipoId = 1`, relaciona por `MATNR` normalizado y toma una fila numérica de `VAL_UNIT` de la semana `WEEK_A` más reciente por material, no la semana del movimiento. El resumen por periodo incluye movimientos totales, piezas con/sin precio, valor USD y promedio ponderado; el detalle se pagina en backend. Las tarjetas muestran importes sin decimales y la tabla hasta tres, solo por formato. Sin precio disponible no se incluye el movimiento en el monto.
 - Movimientos oculta la credencial como columna principal; el CSV también excluye credenciales y datos identificables del aprobador.
 - El nombre de línea procede de `[172.19.216.32].[RapEnsambleEMM].[dbo].[PRENSAS_Cat_NombresLinea].Descripcion`, relacionado mediante `Certificacion.LineaId = IdPrensa`; se muestra junto al número.
 - Los rangos visibles de las gráficas se calculan a partir de las fechas efectivamente representadas.
@@ -89,7 +92,7 @@ La repetición posterior al cambio confirmó cero solicitudes externas, errores 
 
 La casilla general selecciona todas las solicitudes pendientes visibles respetando los filtros de certificación, línea y fecha/hora. Las acciones aprobar/rechazar requieren confirmación y un nombre de responsable. El frontend llama al endpoint individual en secuencia para cada ID. El conjunto no es transaccional: puede haber resultados parciales. Se notifican errores y se mantienen seleccionados los folios que fallaron; el nombre ingresado no comprueba la identidad del usuario.
 
-Los movimientos pendientes se identifican con `aprobado === 0`; `NULL` se representa como sin dictamen y no se incluye en el flujo actual.
+Los movimientos pendientes se identifican con `aprobado === 0`; `NULL` se representa como sin dictamen y no se incluye en el flujo actual. La identidad del responsable procede de la sesión firmada del backend, no de un nombre introducido en la pantalla.
 
 ## Estado local y datos simulados
 
