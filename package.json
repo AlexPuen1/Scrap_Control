@@ -8,7 +8,7 @@
     "build": "npm run build --prefix backend && npm run build --prefix frontend",
     "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
     "actualizar": "npm run install:all && npm run build",
-    "iniciar": "npm run dev",
+    "iniciar": "npm run install:all && node scripts/preparar-entorno.mjs && npm run dev",
     "todo": "npm run build && npm run dev",
     "test": "npm run test --prefix backend",
     "test:db": "npm run test:db --prefix backend",

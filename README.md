@@ -4,6 +4,16 @@
 
 SCRAPControl es una aplicación web interna que reúne información de movimientos registrados en la base corporativa **SOE**. Ayuda a los equipos a revisar qué ocurrió, cuándo, en qué certificación o línea, y qué razón está asociada con cada movimiento. También permite registrar un dictamen. Gerente y Superintendente usan credenciales locales; Administrador puede usar una cuenta local o Windows Authentication mediante IIS.
 
+## Inicio rápido
+
+Requiere Node.js 24 o posterior y npm. Desde la raíz del proyecto, ejecuta:
+
+```powershell
+npm run iniciar
+```
+
+El comando instala las dependencias del proyecto y sus dos aplicaciones; si es la primera vez, solicita los usuarios y contraseñas de Gerente, Superintendente y Administrador, genera la configuración local y después inicia backend y frontend. Las contraseñas se guardan como hashes en `BaseDeDatos/.env`, que no se versiona. En Windows también puedes ejecutar `iniciar.bat`. Abre `http://localhost:5173`; para consultar datos de SOE, el equipo debe tener acceso a la API corporativa.
+
 > **En pocas palabras:** consulta información operativa, la organiza en listas y gráficas, y facilita revisar movimientos pendientes. No reemplaza los sistemas corporativos ni decide por sí misma qué debe aprobarse.
 
 ## ¿Para qué sirve?

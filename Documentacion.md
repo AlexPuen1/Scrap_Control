@@ -53,14 +53,20 @@ El backend también consulta `InventarioDB.dbo.MRP_Result_by_week_test` para la 
 
 ### Instalación y ejecución
 
-Desde la raíz:
+Desde la raíz, para instalar dependencias, preparar la configuración local (si hace falta) e iniciar frontend y backend:
 
 ```powershell
-npm install
-npm install --prefix backend
-npm install --prefix frontend
+npm run iniciar
+```
+
+En Windows también se puede ejecutar `iniciar.bat`. En el primer inicio se piden las credenciales locales de Gerente, Superintendente y Administrador; se guardan hashes scrypt y un secreto de sesión en `BaseDeDatos/.env`, nunca las contraseñas en texto claro. La configuración existente se conserva en las siguientes ejecuciones. Node.js 24 o posterior y acceso a npm son requisitos; consultar datos de SOE requiere conectividad con la API corporativa.
+
+Para ejecutar verificaciones o compilar manualmente:
+
+```powershell
 npm run test:db
 npm test
+npm run build
 npm run dev
 ```
 
