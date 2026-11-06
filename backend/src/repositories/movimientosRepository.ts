@@ -8,6 +8,10 @@ import type {
   ComparativaMensualDB,
   ComparativaMensualReporte,
   OpcionRazonDB,
+  PeriodoPrecioScrap,
+  PrecioScrapDB,
+  PrecioScrapResumenDB,
+  ReportePrecioScrap,
 } from '../types/index.js';
 
 const NOMBRES_TIPOS_MOVIMIENTO: Record<number, string> = {
@@ -59,6 +63,116 @@ function aplicarFiltros(movimientos: MovimientoDetalleDTO[], filtros: FiltrosMov
 }
 
 export class MovimientosRepository {
+  async obtenerPreciosScrap(
+    periodo: PeriodoPrecioScrap,
+    pagina: number,
+    limite: number,
+    incluirResumen = true,
+  ): Promise<ReportePrecioScrap> {
+    const rangos: Record<PeriodoPrecioScrap, string> = {
+      mes: `movimiento.fecha_hora >= DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)`,
+      'dos-meses': `movimiento.fecha_hora >= DATEADD(MONTH, -1, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1))`,
+      'seis-meses': `movimiento.fecha_hora >= DATEADD(MONTH, -5, DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1))`,
+      anio: `movimiento.fecha_hora >= DATEFROMPARTS(YEAR(GETDATE()), 1, 1)`,
+      historico: '1 = 1',
+    };
+    const desde = rangos[periodo];
+    const fuente = `
+      FROM dbo.Movimientos AS movimiento
+      OUTER APPLY (
+        SELECT TOP (1) precio.VAL_UNIT
+        FROM InventarioDB.dbo.MRP_Result_by_week_test AS precio
+        WHERE UPPER(LTRIM(RTRIM(precio.MATNR))) = UPPER(LTRIM(RTRIM(movimiento.MATNR)))
+          AND TRY_CONVERT(float, precio.VAL_UNIT) IS NOT NULL
+          AND TRY_CONVERT(int, precio.WEEK_A) IS NOT NULL
+        ORDER BY TRY_CONVERT(int, precio.WEEK_A) DESC
+      ) AS inventario
+      WHERE movimiento.MovimientoTipoId = 1
+        AND ${desde}
+        AND movimiento.fecha_hora < DATEADD(DAY, 1, CONVERT(date, GETDATE()))
+    `;
+
+    const consultaResumen = () => consultarSQL<PrecioScrapResumenDB>(`
+      SELECT
+        agregado.totalMovimientos,
+        agregado.piezasValorizadas,
+        agregado.piezasSinPrecio,
+        agregado.valorTotalUSD,
+        CASE
+          WHEN agregado.piezasValorizadas = 0 THEN NULL
+          ELSE agregado.valorTotalUSD / agregado.piezasValorizadas
+        END AS precioPromedioUSD
+      FROM (
+        SELECT
+          COUNT_BIG(*) AS totalMovimientos,
+          COALESCE(SUM(CASE
+            WHEN inventario.VAL_UNIT IS NOT NULL THEN CONVERT(bigint, movimiento.cantidad)
+            ELSE 0
+          END), 0) AS piezasValorizadas,
+          COALESCE(SUM(CASE
+            WHEN inventario.VAL_UNIT IS NULL THEN CONVERT(bigint, movimiento.cantidad)
+            ELSE 0
+          END), 0) AS piezasSinPrecio,
+          COALESCE(SUM(CASE
+            WHEN inventario.VAL_UNIT IS NOT NULL
+              THEN movimiento.cantidad * inventario.VAL_UNIT
+            ELSE 0
+          END), 0) AS valorTotalUSD
+        ${fuente}
+      ) AS agregado
+    `);
+
+    const desplazamiento = (pagina - 1) * limite;
+    const consultaDatos = () => consultarSQL<PrecioScrapDB>(`
+      SELECT
+        movimiento.id,
+        CONVERT(char(10), movimiento.fecha_hora, 23) AS fecha,
+        movimiento.MATNR AS matnr,
+        movimiento.serial,
+        movimiento.cantidad,
+        inventario.VAL_UNIT AS precioUnitarioUSD,
+        CASE
+          WHEN inventario.VAL_UNIT IS NULL THEN NULL
+          ELSE movimiento.cantidad * inventario.VAL_UNIT
+        END AS totalUSD
+      ${fuente}
+      ORDER BY movimiento.fecha_hora DESC, movimiento.id DESC
+      OFFSET ${desplazamiento} ROWS FETCH NEXT ${limite} ROWS ONLY
+    `);
+
+    const [resumenFilas, datos] = incluirResumen
+      ? await Promise.all([consultaResumen(), consultaDatos()])
+      : [undefined, await consultaDatos()] as const;
+    const reporte: ReportePrecioScrap = {
+      datos: datos.map((fila) => ({
+        id: Number(fila.id),
+        fecha: String(fila.fecha),
+        matnr: fila.matnr ?? '',
+        serial: fila.serial ?? '',
+        cantidad: Number(fila.cantidad),
+        precioUnitarioUSD: fila.precioUnitarioUSD == null ? null : Number(fila.precioUnitarioUSD),
+        totalUSD: fila.totalUSD == null ? null : Number(fila.totalUSD),
+      })),
+      pagina,
+      limite,
+    };
+
+    if (resumenFilas) {
+      const resumen = resumenFilas[0];
+      reporte.resumen = {
+        totalMovimientos: Number(resumen?.totalMovimientos ?? 0),
+        piezasValorizadas: Number(resumen?.piezasValorizadas ?? 0),
+        piezasSinPrecio: Number(resumen?.piezasSinPrecio ?? 0),
+        valorTotalUSD: Number(resumen?.valorTotalUSD ?? 0),
+        precioPromedioUSD: resumen?.precioPromedioUSD == null
+          ? null
+          : Number(resumen.precioPromedioUSD),
+      };
+    }
+
+    return reporte;
+  }
+
   async obtenerAprobacionesPorResponsable(
     fechaInicio?: string,
     fechaFin?: string,

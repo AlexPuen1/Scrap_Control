@@ -1,24 +1,23 @@
 # Registro de seguridad — SCRAPControl
 
-**Actualizado:** 3 de noviembre de 2026
-**Estado general:** apto únicamente para uso local/controlado; **no listo para exponerse a otros equipos ni a Internet**.
+**Actualizado:** 5 de noviembre de 2026
+**Estado general:** autenticación Windows implementada en la aplicación; **no desplegar en red hasta completar y probar IIS/ARR y la configuración del secreto**.
 **Alcance de esta evaluación:** revisión estática del código del repositorio y Semgrep. No es una certificación ni una auditoría exhaustiva de la infraestructura, la API corporativa o SQL Server.
 
 ## Resumen ejecutivo
 
-SCRAPControl consulta movimientos de Scrap desde SOE a través de una API corporativa y tiene código para modificar la razón o registrar un dictamen. En el middleware actual, la edición de razón está bloqueada con 403 y los dictámenes escriben datos persistentes. Se encontraron controles útiles de CORS, validación de entradas, TLS hacia la API corporativa y protección de valores CSV; sin embargo, el backend **no autentica a las personas ni comprueba sus permisos**. El nombre recibido para un dictamen es texto proporcionado por el cliente, no una identidad verificada.
+SCRAPControl consulta movimientos de Scrap desde SOE a través de una API corporativa y tiene código para modificar la razón o registrar un dictamen. Todas las rutas `/api` ahora requieren encabezados que el proxy IIS debe sobrescribir, un secreto compartido y una identidad incluida en la lista autorizada. Por ahora `alejandro.puente1@magna.com` tiene rol Administrador y los demás usuarios se deniegan. El backend usa la identidad autenticada para `nvAprobadoPor`; no acepta un nombre de actor proporcionado por el navegador.
 
-Como mitigación inmediata, el backend se limitó a escuchar en `127.0.0.1`. Esto reduce el acceso desde otros equipos, pero no protege contra otros procesos o usuarios del mismo equipo y **no reemplaza autenticación ni autorización**. La integración de identidad quedó expresamente pendiente; aún se requiere un proveedor corporativo y una política de roles.
+La autenticación de Windows se realiza en IIS/ARR y **no está activa en Vite o `vite preview`**. La integración de IIS, la negociación Kerberos/NTLM, los encabezados sobrescritos, el secreto de producción y el acceso desde una laptop no se han probado en este entorno. Hasta completar esa validación, no se debe exponer el servicio.
 
-**Actualización de estado (2 de noviembre de 2026):** todos los roles demo pueden aprobar o rechazar movimientos; el middleware permite `PATCH /api/movimientos/:id/dictamen` y bloquea otros `PATCH` con 403. No hay autenticación/autorización en el servidor, por lo que cualquier cliente que alcance el backend puede dictaminar y suministrar el nombre registrado. La gráfica de aprobaciones es de solo lectura y puede consultar toda la tabla o el periodo por `dtAprobado`; el endpoint agrupa filas `aprobado = 1` por `nvAprobadoPor`. No se consultó ni escribió SOE al implementar esa gráfica.
+La prueba automatizada valida el mapeo de la cuenta UPN indicada al rol Administrador, el rechazo de un usuario no configurado, la falta del secreto proxy y que `nvAprobadoPor` sale de la identidad autenticada. Estas pruebas no demuestran que IIS/Windows Authentication esté correctamente configurado.
 
 | Indicador | Estado |
 |---|---|
 | Hallazgos críticos identificados | Ninguno en el análisis realizado; no equivale a demostrar que no existan. |
 | Semgrep `--config=auto` final | Completado: 0 hallazgos, 227 reglas y 60 archivos analizados. |
-| Hallazgo alto confirmado | Rutas de lectura y escritura sin autenticación/autorización. La exposición de red se mitigó limitando el listener a loopback. |
-| Autenticación y autorización por rol | Pendientes por decisión del propietario del proyecto. |
-| Pruebas ejecutadas | `npm run build`, `npm test` y Semgrep; completadas correctamente. |
+| Autenticación y autorización | Middleware fail-closed y lista Administrador implementados; IIS/ARR y Windows SSO aún requieren integración y pruebas en despliegue. |
+| Pruebas ejecutadas en esta actualización | `npm test` (17), compilación frontend/backend y lint. |
 | Pruebas de penetración o escritura real en SOE | No realizadas. |
 | Recorrido visual Playwright | Rutas y viewports probados con respuestas API simuladas; no es una auditoría de seguridad ni validación de datos reales. |
 
@@ -42,7 +41,7 @@ Navegador React → API local Express → API corporativa HTTPS
 | Interfaz de escucha | `backend/src/server.ts` fija el host `127.0.0.1`. El proxy de desarrollo en `frontend/vite.config.ts` apunta a la misma dirección. Esto evita que Express escuche en todas las interfaces; no es una frontera contra procesos locales. |
 | Puerto | `PORT` se convierte a entero y se rechaza si no está entre 1 y 65535. |
 | CORS | Se limita mediante `CORS_ORIGINS`, con orígenes locales de Vite por defecto. CORS limita navegadores; no autentica, no autoriza y no bloquea clientes HTTP locales. |
-| Validación de solicitudes | Los controladores validan IDs decimales positivos seguros, fechas, tipo y razón; validan también dictamen y longitud del nombre capturado. Las pruebas unitarias incluyen IDs malformados y rango seguro. |
+| Validación de solicitudes | Los controladores validan IDs, fechas, tipo y razón; el dictamen registra la identidad Windows autenticada por IIS, no texto del cliente. |
 | SQL | Las consultas de lectura pasan por una comprobación que permite `SELECT` de una sola instrucción. Los valores dinámicos observados en el repositorio son fechas validadas o enteros validados; el nombre del dictaminador se escapa para comillas SQL. La integración usa un endpoint corporativo de SQL genérico, no parámetros SQL enlazados. |
 | Conexión corporativa | La URL por defecto usa HTTPS y `fetch` conserva la validación TLS normal; los scripts Node de operación incluyen `--use-system-ca`. No se verificaron aquí certificados, políticas ni permisos del servicio corporativo. |
 | Endurecimiento HTTP local | Express oculta `X-Powered-By`, establece `nosniff`, `DENY`, `no-referrer` y `no-store`, limita JSON a 10 KB, escucha en loopback y omite query strings de los logs de acceso. |
@@ -50,12 +49,12 @@ Navegador React → API local Express → API corporativa HTTPS
 | Health check | Solo expone disponibilidad y estado conectado/desconectado; ya no publica nombres de tablas, rutas locales o configuración SQL. |
 | Secretos locales | `.gitignore` excluye `.env`, `.env.local` y variantes locales. Esto reduce el riesgo de versionarlos, pero no demuestra que nunca se haya filtrado un secreto ni sustituye un escaneo dedicado de secretos. |
 | Exportación CSV | `frontend/src/utils/formatters.ts` usa columnas explícitas, escapa campos y antepone apóstrofo a valores que podrían interpretarse como fórmulas. Las exportaciones aún pueden contener datos operativos identificables y requieren manejo restringido. |
-| Pruebas automatizadas | `npm test` valida IDs, códigos de dictamen y que un error remoto no se revele al cliente. Playwright verificó la interfaz con fixtures locales; no cubre autenticación (aún inexistente), autorización de API ni escrituras válidas. |
-| Documentación | `README.md` y `Documentacion.md` advierten que no se publique el servicio sin autenticación/autorización. Este archivo centraliza el estado, los cambios y el plan pendiente. |
+| Pruebas automatizadas | `npm test` valida IDs, allowlist Windows simulada, rechazo de identidades y proxy inválido. No cubre el SSO real de IIS. |
+| Documentación | `IIS-Windows-Authentication.md` describe la configuración pendiente de IIS/ARR y el secreto de proxy. |
 
 ### Cambio de exposición de red
 
-Antes, `app.listen(PORT, ...)` no fijaba una interfaz, lo que podía permitir escucha en interfaces de red según el entorno. Ahora Express enlaza explícitamente a `127.0.0.1`, y Vite usa `http://127.0.0.1:3001`. Por tanto, equipos remotos no deberían poder conectarse directamente al listener local. Un proxy inverso, túnel, port-forward o cambio de host puede volver a exponerlo; no se probó ninguna configuración de despliegue. Si se necesita acceso compartido, primero debe añadirse autenticación y autorización de servidor.
+Express enlaza explícitamente a `127.0.0.1`; IIS/ARR es el único proxy previsto. Un túnel, port-forward o proxy mal configurado podría volver a exponerlo. La autenticación del backend solo es confiable si IIS reemplaza los encabezados del cliente y se protege la clave compartida.
 
 ## Hallazgos y riesgos pendientes
 
@@ -63,8 +62,8 @@ Severidades expresadas como prioridades de remediación; no son un resultado cer
 
 | Prioridad | Hallazgo o riesgo | Evidencia / efecto | Estado y acción necesaria |
 |---|---|---|---|
-| **Alta** | No hay autenticación ni autorización por rol en las rutas. | `backend/src/routes/movimientosRoutes.ts` monta GET y PATCH sin middleware de identidad. Clientes locales pueden leer datos e invocar cambios. `aprobadoPor` es texto controlado por el solicitante. | **Pendiente.** Elegir proveedor de identidad, validar tokens/sesión en backend, derivar al actor de la identidad verificada y exigir permisos explícitos para cada operación de escritura. |
-| **Alta** | Dictámenes reales están disponibles sin autorización de servidor. | `PATCH /api/movimientos/:id/dictamen` está permitido para todos los clientes que alcancen Express; los otros `PATCH` actualmente se bloquean con 403. El dictamen actualiza `aprobado`, `nvAprobadoPor` y `dtAprobado`; los lotes son solicitudes individuales sin transacción. | Mantener acceso solo local/controlado hasta implementar autenticación y autorización. Probar cambios autorizados/no autorizados en un ambiente aislado y acordar reversión/auditoría con el dueño de SOE. |
+| **Alta hasta validar despliegue** | Identidad del proxy IIS aún no probada de extremo a extremo. | El backend valida un secreto y allowlist en encabezados; si IIS no autentica Windows y no sobrescribe dichos encabezados, la política no representa una identidad confiable. | **Pendiente de despliegue.** Configurar y probar IIS/ARR/Windows Authentication, clave compartida, cuenta permitida y rechazo de solicitudes externas/manipuladas antes del acceso en red. |
+| **Alta operacional** | Dictámenes reales son persistentes y no tienen reversa desde la aplicación. | `PATCH /api/movimientos/:id/dictamen` actualiza `aprobado`, la identidad Windows en `nvAprobadoPor` y `dtAprobado`; los lotes son solicitudes individuales sin transacción. | Probar en ambiente aislado y acordar reversión/auditoría con el dueño de SOE. |
 | **Media** | No se observan límites de frecuencia ni paginación real en la consulta principal. | `MovimientosRepository.listar` obtiene el conjunto del periodo y aplica varios filtros en memoria; peticiones repetidas o periodos grandes pueden incrementar carga y exposición de datos. | Evaluar límites de solicitudes, límites de fechas/tamaño, paginación y filtros SQL del lado servidor. Medir carga antes de fijar umbrales. |
 | **Media** | El endpoint de salud revela metadatos de conexión y estructura. | `GET /api/health` informa motor, estado, nombres de tablas/ruta y versión. No contiene credenciales según el código revisado, pero expone detalles operativos. | Determinar si hace falta acceso público al health check; separar comprobación mínima de información administrativa y limitar detalles. |
 | **Media** | Respuestas de error pueden devolver mensajes de excepciones al cliente. | Algunos controladores serializan `error.message` en HTTP 500. Un error de la API SQL podría contener información operativa. | Revisar mensajes de producción: responder de forma genérica al cliente y registrar detalles con acceso restringido, sin registrar secretos ni datos personales. |
@@ -88,7 +87,7 @@ Los puntos marcados Media/Baja son recomendaciones basadas en la configuración 
 
 ### No realizado
 
-- No se añadió autenticación, proveedor de identidad, autorización por rol ni auditoría de actor: el proveedor no se había definido y el usuario pidió dejarlo pendiente.
+- No se verificó IIS/ARR real, Kerberos/NTLM, acceso desde otra laptop, encabezados de proxy o el secreto compartido final.
 - No se hicieron escrituras válidas, aprobaciones ni cambios de razón en SOE; tampoco pruebas contra una base aislada.
 - No se ejecutó una prueba de penetración, análisis dinámico (DAST), fuzzing, evaluación de red/firewall/proxy ni prueba E2E conectada al backend/SOE.
 - No se ejecutó una auditoría de dependencias ni un escaneo dedicado de secretos.

@@ -31,13 +31,6 @@ export const MainLayout: React.FC = () => {
           {/* Cabecera Superior */}
           <TopHeader onOpenMobileMenu={() => setMobileOpen(true)} />
 
-          <div
-            role="status"
-            className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-200"
-          >
-            Modo demostración: los roles solo cambian la interfaz. El backend no autentica ni autoriza; no expongas este servicio.
-          </div>
-
           {/* Área de Contenido Dinámico con transición entre páginas */}
           <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
             <motion.div

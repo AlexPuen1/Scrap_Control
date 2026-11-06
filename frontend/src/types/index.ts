@@ -62,6 +62,12 @@ export interface HitoHistorial {
   estado: 'completado' | 'actual' | 'pendiente' | 'rechazado';
 }
 
+export interface UsuarioAutenticado {
+  id: string;
+  nombre: string;
+  rol: 'Administrador' | 'Gerente' | 'Superintendente';
+}
+
 export interface MovimientoDB {
   id: number;
   CertificacionId: number;
@@ -149,6 +155,31 @@ export interface ResumenScrapLinea {
 export interface ReporteScrapLinea {
   periodo: { fechaInicio: string; fechaFin: string } | null;
   datos: ResumenScrapLinea[];
+}
+
+export type PeriodoPrecioScrap = 'mes' | 'dos-meses' | 'seis-meses' | 'anio' | 'historico';
+
+export interface FilaPrecioScrap {
+  id: number;
+  fecha: string;
+  matnr: string;
+  serial: string;
+  cantidad: number;
+  precioUnitarioUSD: number | null;
+  totalUSD: number | null;
+}
+
+export interface ReportePrecioScrap {
+  resumen?: {
+    totalMovimientos: number;
+    piezasValorizadas: number;
+    piezasSinPrecio: number;
+    valorTotalUSD: number;
+    precioPromedioUSD: number | null;
+  };
+  datos: FilaPrecioScrap[];
+  pagina: number;
+  limite: number;
 }
 
 export interface ComparativaMensualDato {

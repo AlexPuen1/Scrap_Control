@@ -2,7 +2,7 @@
 
 ## Resumen
 
-El backend no crea una conexión SQL Server con ODBC y no utiliza directamente la identidad Windows del usuario. Realiza peticiones HTTPS a la API corporativa:
+El backend no crea una conexión SQL Server con ODBC ni utiliza directamente la identidad Windows para autenticar la API de datos. SCRAPControl valida cuentas locales mediante hashes scrypt y también admite Windows Authentication de Administrador mediante IIS; por separado, Node realiza peticiones HTTPS a la API corporativa:
 
 ```text
 POST {DB_API_BASE_URL}/api/Utility/executeSQLCommand
@@ -11,14 +11,15 @@ Body: { server, db, command }
 
 Configuración actual: servidor solicitado `EST02DB`, base `SOE`, API `https://est02des.magna.global/est_api`. La API responde ejecutando la instrucción SQL. El mecanismo de autenticación y la identidad SQL interna del servicio no se describen en Swagger ni se pueden inferir de este backend; deben confirmarse con el equipo propietario. Las pruebas históricas de este documento usaron `EST04DB`; no demuestran por sí mismas la conectividad ni la paridad de esquema de `EST02DB`.
 
-El endpoint remoto acepta SQL genérico. SCRAPControl genera SQL en el backend y no permite que el navegador envíe comandos. Las lecturas se limitan localmente a una instrucción que inicia con `SELECT`; existen operaciones específicas de escritura para dictamen y razón, pero el middleware Express actual solo permite el PATCH de dictamen y bloquea los demás con 403. Esta protección no limita por sí sola los permisos de la API remota.
+El endpoint remoto acepta SQL genérico. SCRAPControl genera SQL en el backend y no permite que el navegador envíe comandos. Las lecturas se limitan localmente a una instrucción que inicia con `SELECT`; las escrituras de dictamen y razón solo son accesibles a identidades Windows autorizadas. Esta protección no limita por sí sola los permisos de la API remota.
 
 ## Recorrido de extremo a extremo
 
 ```text
 Frontend React
   └─ GET/PATCH /api/... (JSON)
-       └─ Express local
+       └─ IIS (proxy HTTPS; Windows Authentication solo para /api/auth/windows)
+            └─ Express local
             └─ Controller: valida parámetros
                  └─ MovimientosRepository: compone consulta
                       └─ database.connection.ts
@@ -38,8 +39,13 @@ El cliente encuentra el directorio `BaseDeDatos` relativo a la ubicación del m�
 | `DB_SERVER` | `EST02DB` | Servidor solicitado a la API. |
 | `DB_DATABASE` | `SOE` | Base solicitada. |
 | `DB_API_TIMEOUT` | `20000` | Timeout de fetch, milisegundos. |
+| `AUTH_MANAGER_USERNAME` | `gerente123@` | Usuario local de Gerente. La contraseña se configura solo como hash scrypt. |
+| `AUTH_SUPERINTENDENTE_USERNAME` | `super123@intendente` | Usuario local de Superintendente. La contraseña se configura solo como hash scrypt. |
+| `AUTH_SESSION_SECRET` | Sin valor predeterminado | Secreto aleatorio de al menos 32 bytes para cookies firmadas. |
+| `WINDOWS_ADMIN_USERS` | `alejandro.puente1@magna.com` | Cuentas Windows/UPN autorizadas como Administrador. |
+| `WINDOWS_AUTH_PROXY_KEY` | Sin valor predeterminado | Secreto aleatorio compartido con IIS para la ruta de Windows. |
 
-No añadir usuario o contraseña SQL a ese archivo. `.env` debe mantenerse fuera del control de versiones; compartir solo valores no secretos aprobados. `backend/.env` configura por separado `PORT` (3001 por defecto). `VITE_API_BASE_URL` controla la URL local del cliente frontend, no la URL de la API SQL.
+No añadir usuario o contraseña SQL a ese archivo. Las contraseñas de SCRAPControl tampoco deben almacenarse en texto claro: configurar sales y hashes scrypt en el `.env` privado. `.env` debe mantenerse fuera del control de versiones; compartir solo valores no secretos aprobados. `backend/.env` configura por separado `PORT` (3001 por defecto). `VITE_API_BASE_URL` controla la URL local del cliente frontend, no la URL de la API SQL. Configurar IIS como único proxy y no exponer Express a la red. Ver [autenticación híbrida en IIS](../IIS-Windows-Authentication.md).
 
 ## Arranque del backend
 
@@ -136,15 +142,15 @@ El 2 de noviembre de 2026 se añadieron pruebas unitarias aisladas para el endpo
 
 ### Dictamen
 
-`PATCH /api/movimientos/:id/dictamen` recibe `{ "aprobado": 1 | 4, "aprobadoPor": "..." }`. Backend exige ID positivo entero seguro, decisión 1 o 4 y nombre recortado de 1–200 caracteres. Actualiza únicamente `dbo.Movimientos` con `id` correspondiente y `aprobado = 0`, asignando `aprobado`, `nvAprobadoPor` y `dtAprobado = GETDATE()`. El código 2 representa procesado por otro software y SCRAPControl no lo escribe. Luego relee el registro para validar y formar la respuesta. Un registro ausente da 404; un registro que ya no es pendiente o no se actualizó da 409.
+`PATCH /api/movimientos/:id/dictamen` recibe `{ "aprobado": 1 | 4 }`. Backend exige una sesión autenticada, ID positivo entero seguro y decisión 1 o 4. Actualiza únicamente `dbo.Movimientos` con `id` correspondiente y `aprobado = 0`, asignando `aprobado`, `nvAprobadoPor` desde la identidad de sesión y `dtAprobado = GETDATE()`. El código 2 representa procesado por otro software y SCRAPControl no lo escribe. Luego relee el registro para validar y formar la respuesta. Un registro ausente da 404; un registro que ya no es pendiente o no se actualizó da 409.
 
-El valor `aprobado = NULL` no pasa el predicado de pendiente. El nombre es texto de auditoría y no acredita identidad.
+El valor `aprobado = NULL` no pasa el predicado de pendiente. El backend ignora cualquier nombre que el navegador intente enviar y registra la identidad derivada de la sesión autenticada.
 
 ### Razón
 
 `PATCH /api/movimientos/:id/razon` recibe `{ "razonId": entero positivo | null }`. El repositorio primero obtiene el movimiento; si el valor no es `null`, vuelve a consultar opciones válidas para el tipo del registro y rechaza una razón no presente. Después actualiza solo `dbo.Movimientos.RazonId`, relee el registro y confirma la persistencia. `null` significa «Sin razón».
 
-El middleware actual permite desde Express solo el `PATCH /api/movimientos/:id/dictamen`; los demás `PATCH`, incluida la edición de razón, responden 403. El dictamen está habilitado para todos los roles demo, pero ninguno de los roles o nombres se valida en servidor. Todo cliente que alcance el backend puede solicitar escrituras reales. No exponer fuera de un entorno local/controlado hasta implementar autenticación y autorización.
+La edición de razones requiere rol Administrador. El servidor obtiene la identidad de la sesión y nunca acepta un nombre enviado por el navegador. La ruta Windows de inicio de sesión exige los encabezados de identidad y secreto inyectados por IIS, y compara la cuenta con `WINDOWS_ADMIN_USERS`.
 
 ## Diagnóstico de fallos
 
@@ -161,8 +167,8 @@ Que la prueba de conexión pase no confirma el permiso para leer/escribir tablas
 
 - No exponer directamente `executeSQLCommand` a clientes web.
 - No permitir SQL proveniente del navegador.
-- CORS del backend local usa actualmente `origin: '*'`; restringirlo antes del despliegue.
-- No hay autenticación/autorización ni rol de gerente; proteger el backend en red hasta resolverlo.
+- Windows Authentication se implementa en IIS, no en Vite. Probar negociación Kerberos/NTLM, confianza del proxy, HTTPS y rechazo de identidades fuera de la allowlist antes de publicar.
+- La cuenta de servicio Node debe correr bajo permisos mínimos; Express debe permanecer en loopback y el secreto de proxy debe protegerse en IIS y en el entorno de Node.
 - Confirmar los permisos efectivos de la identidad corporativa y habilitar solo los estrictamente necesarios.
 - Mantener datos locales de configuración y secretos fuera de Git.
 - Las operaciones de dictamen/razón no tienen rollback automático ni transacción agrupada.

@@ -24,9 +24,9 @@ interface ScrapContextType {
   toasts: ToastMessage[];
   agregarToast: (tipo: ToastMessage['tipo'], titulo: string, mensaje: string) => void;
   removerToast: (id: string) => void;
-  aprobarMovimiento: (id: string, aprobadoPor: string) => Promise<void>;
-  dictaminarMovimientos: (ids: string[], decision: 1 | 4, aprobadoPor: string, comentarioRechazo?: string) => Promise<{ dictaminados: string[]; fallidos: { id: string; mensaje: string }[] }>;
-  rechazarMovimiento: (id: string, aprobadoPor: string, comentarioRechazo?: string) => Promise<void>;
+  aprobarMovimiento: (id: string, identidadEsperada: string) => Promise<void>;
+  dictaminarMovimientos: (ids: string[], decision: 1 | 4, identidadEsperada: string, comentarioRechazo?: string) => Promise<{ dictaminados: string[]; fallidos: { id: string; mensaje: string }[] }>;
+  rechazarMovimiento: (id: string, identidadEsperada: string, comentarioRechazo?: string) => Promise<void>;
   actualizarRazonMovimiento: (id: string, razonId: number | null) => Promise<void>;
   crearMotivo: (nuevo: Omit<Motivo, 'id'>) => Motivo;
   actualizarMotivo: (id: string, actualizacion: Partial<Motivo>) => void;
@@ -155,18 +155,18 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const guardarDictamen = async (id: string, decision: 1 | 4, aprobadoPor: string) => {
+  const guardarDictamen = async (id: string, decision: 1 | 4, identidadEsperada: string) => {
     try {
       return decision === 1
-        ? await ScrapService.aprobarMovimiento(id, aprobadoPor)
-        : await ScrapService.rechazarMovimiento(id, aprobadoPor);
+        ? await ScrapService.aprobarMovimiento(id)
+        : await ScrapService.rechazarMovimiento(id);
     } catch (error) {
       try {
         const movimientoConfirmado = await ScrapService.obtenerMovimiento(id);
         const estadoConfirmado = movimientoConfirmado.aprobado === decision
           || (decision === 1 && movimientoConfirmado.aprobado === 2 && Boolean(movimientoConfirmado.dtAprobado));
         if (estadoConfirmado
-          && movimientoConfirmado.nvAprobadoPor === aprobadoPor.trim()) {
+          && movimientoConfirmado.nvAprobadoPor === identidadEsperada.trim()) {
           return movimientoConfirmado;
         }
       } catch {
@@ -184,8 +184,8 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     ));
   };
 
-  const aprobarMovimiento = async (id: string, aprobadoPor: string) => {
-    const actualizado = await guardarDictamen(id, 1, aprobadoPor);
+  const aprobarMovimiento = async (id: string, identidadEsperada: string) => {
+    const actualizado = await guardarDictamen(id, 1, identidadEsperada);
     aplicarDictamenConfirmado(actualizado);
     agregarToast('success', 'Movimiento aprobado', `El dictamen del movimiento ${id} se guardó en dbo.Movimientos.`);
   };
@@ -200,7 +200,7 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const dictaminarMovimientos = async (
     ids: string[],
     decision: 1 | 4,
-    aprobadoPor: string,
+    identidadEsperada: string,
     comentarioRechazo = '',
   ) => {
     const incluyeScrap = ids.some((id) =>
@@ -215,7 +215,7 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     for (const id of ids) {
       try {
-        const actualizado = await guardarDictamen(id, decision, aprobadoPor);
+        const actualizado = await guardarDictamen(id, decision, identidadEsperada);
         if (decision === 4) {
           if (
             movimientos.some((movimiento) => movimiento.id === id && movimiento.movimientoTipoId === 1)
@@ -256,12 +256,12 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { dictaminados, fallidos };
   };
 
-  const rechazarMovimiento = async (id: string, aprobadoPor: string, comentarioRechazo = '') => {
+  const rechazarMovimiento = async (id: string, identidadEsperada: string, comentarioRechazo = '') => {
     const esScrap = movimientos.some((movimiento) => movimiento.id === id && movimiento.movimientoTipoId === 1);
     if (esScrap && !comentarioRechazo.trim()) {
       throw new Error('El comentario es obligatorio para rechazar Scrap.');
     }
-    const actualizado = await guardarDictamen(id, 4, aprobadoPor);
+    const actualizado = await guardarDictamen(id, 4, identidadEsperada);
     if (esScrap) registrarComentarioRechazoLocal(id, comentarioRechazo.trim());
     aplicarDictamenConfirmado(actualizado);
     agregarToast(

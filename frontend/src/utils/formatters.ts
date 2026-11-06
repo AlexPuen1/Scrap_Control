@@ -5,7 +5,7 @@ export const formatearMoneda = (cantidad: number, moneda: string = 'USD'): strin
     style: 'currency',
     currency: moneda,
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 3,
   }).format(cantidad);
 };
 

@@ -4,9 +4,20 @@ import dotenv from 'dotenv';
 import { connectToDatabase } from './config/database.js';
 import movimientosRoutes from './routes/movimientosRoutes.js';
 import { getHealth } from './controllers/healthController.js';
-import { bloquearEscriturasDemo } from './middleware/demoReadOnly.js';
+import {
+  cerrarSesion,
+  getIdentidadWindows,
+  iniciarSesion,
+  iniciarSesionWindows,
+} from './controllers/authController.js';
+import {
+  crearMiddlewareAutenticacion,
+  crearMiddlewareWindowsAdmin,
+  validarConfiguracionAutenticacion,
+} from './middleware/authentication.js';
 
 dotenv.config();
+validarConfiguracionAutenticacion();
 
 const app = express();
 app.disable('x-powered-by');
@@ -30,13 +41,11 @@ app.use((_req, res, next) => {
 });
 app.use(cors({
   origin: allowedOrigins,
-  methods: ['GET', 'PATCH', 'OPTIONS'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json({ limit: '10kb' }));
-
-// Demo roles are frontend-only; allow only dictamen updates and block other persistent changes.
-app.use('/api/movimientos', bloquearEscriturasDemo);
 
 // Logging middleware
 app.use((req, _res, next) => {
@@ -46,6 +55,11 @@ app.use((req, _res, next) => {
 
 // Rutas
 app.get('/api/health', getHealth);
+app.post('/api/auth/login', iniciarSesion);
+app.post('/api/auth/logout', cerrarSesion);
+app.get('/api/auth/windows', crearMiddlewareWindowsAdmin(), iniciarSesionWindows);
+app.use('/api', crearMiddlewareAutenticacion());
+app.get('/api/auth/me', getIdentidadWindows);
 app.use('/api/movimientos', movimientosRoutes);
 
 // Iniciar servidor y conectar a base de datos

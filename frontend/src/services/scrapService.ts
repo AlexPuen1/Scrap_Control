@@ -1,4 +1,13 @@
-import type { ComparativaMensual, Movimiento, MovimientoDB, OpcionRazon, ReporteScrapLinea } from '../types';
+import type {
+  ComparativaMensual,
+  Movimiento,
+  MovimientoDB,
+  OpcionRazon,
+  PeriodoPrecioScrap,
+  ReportePrecioScrap,
+  ReporteScrapLinea,
+  UsuarioAutenticado,
+} from '../types';
 import { MOVIMIENTO_TIPOS_SSMS } from '../constants';
 
 function adaptarMovimiento(row: MovimientoDB): Movimiento {
@@ -58,6 +67,24 @@ function adaptarMovimiento(row: MovimientoDB): Movimiento {
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+const solicitudesGetEnCurso = new Map<string, Promise<Response>>();
+
+async function solicitarGet(url: string): Promise<Response> {
+  let solicitud = solicitudesGetEnCurso.get(url);
+  if (!solicitud) {
+    solicitud = fetch(url, { credentials: 'include' });
+    solicitudesGetEnCurso.set(url, solicitud);
+  }
+
+  try {
+    // Each consumer needs its own body stream, while concurrent identical GETs share the network request.
+    return (await solicitud).clone();
+  } finally {
+    if (solicitudesGetEnCurso.get(url) === solicitud) {
+      solicitudesGetEnCurso.delete(url);
+    }
+  }
+}
 
 export interface FiltrosBusquedaMovimientos {
   busqueda?: string;
@@ -83,7 +110,7 @@ async function solicitarMovimientos(
     if (valor) parametros.set(clave, valor);
   });
   const query = parametros.size > 0 ? `?${parametros.toString()}` : '';
-  const response = await fetch(`${API_BASE}/movimientos${query}`);
+  const response = await solicitarGet(`${API_BASE}/movimientos${query}`);
   const body = await response.json() as { exitoso: boolean; datos?: MovimientoDB[]; mensaje?: string };
   if (!response.ok || !body.exitoso || !body.datos) {
     throw new Error(body.mensaje || `No se pudieron cargar los movimientos (HTTP ${response.status}).`);
@@ -101,7 +128,7 @@ async function solicitarAprobaciones(
     parametros.set('fechaFin', fechaFin);
   }
   const query = parametros.size > 0 ? `?${parametros.toString()}` : '';
-  const response = await fetch(`${API_BASE}/movimientos/aprobaciones${query}`);
+  const response = await solicitarGet(`${API_BASE}/movimientos/aprobaciones${query}`);
   const body = await response.json() as {
     exitoso: boolean;
     datos?: { nombre: string; aprobaciones: number }[];
@@ -115,7 +142,7 @@ async function solicitarAprobaciones(
 }
 
 async function solicitarMovimiento(id: string): Promise<Movimiento> {
-  const response = await fetch(`${API_BASE}/movimientos/${encodeURIComponent(id)}`);
+  const response = await solicitarGet(`${API_BASE}/movimientos/${encodeURIComponent(id)}`);
   const body = await response.json() as { exitoso: boolean; datos?: MovimientoDB; mensaje?: string };
   if (!response.ok || !body.exitoso || !body.datos) {
     throw new Error(body.mensaje || `No se pudo cargar el movimiento (HTTP ${response.status}).`);
@@ -123,11 +150,56 @@ async function solicitarMovimiento(id: string): Promise<Movimiento> {
   return adaptarMovimiento(body.datos);
 }
 
-async function enviarDictamen(id: string, aprobado: 1 | 4, aprobadoPor: string): Promise<Movimiento> {
+async function solicitarUsuarioAutenticado(): Promise<UsuarioAutenticado> {
+  const response = await solicitarGet(`${API_BASE}/auth/me`);
+  const body = await response.json() as {
+    exitoso: boolean;
+    usuario?: UsuarioAutenticado;
+    mensaje?: string;
+  };
+  if (!response.ok || !body.exitoso || !body.usuario) {
+    throw new Error(body.mensaje || `No se pudo verificar la cuenta de Windows (HTTP ${response.status}).`);
+  }
+  return body.usuario;
+}
+
+async function enviarCredenciales(usuario: string, contrasena: string): Promise<UsuarioAutenticado> {
+  const response = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario, contrasena }),
+  });
+  const body = await response.json() as { exitoso: boolean; usuario?: UsuarioAutenticado; mensaje?: string };
+  if (!response.ok || !body.exitoso || !body.usuario) {
+    throw new Error(body.mensaje || `No se pudo iniciar sesión (HTTP ${response.status}).`);
+  }
+  return body.usuario;
+}
+
+async function iniciarSesionWindows(): Promise<UsuarioAutenticado> {
+  const response = await fetch(`${API_BASE}/auth/windows`, { credentials: 'include' });
+  const body = await response.json() as { exitoso: boolean; usuario?: UsuarioAutenticado; mensaje?: string };
+  if (!response.ok || !body.exitoso || !body.usuario) {
+    throw new Error(body.mensaje || `No se pudo iniciar sesión con Windows (HTTP ${response.status}).`);
+  }
+  return body.usuario;
+}
+
+async function cerrarSesion(): Promise<void> {
+  const response = await fetch(`${API_BASE}/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!response.ok) throw new Error(`No se pudo cerrar sesión (HTTP ${response.status}).`);
+}
+
+async function enviarDictamen(id: string, aprobado: 1 | 4): Promise<Movimiento> {
   const response = await fetch(`${API_BASE}/movimientos/${encodeURIComponent(id)}/dictamen`, {
     method: 'PATCH',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ aprobado, aprobadoPor }),
+    body: JSON.stringify({ aprobado }),
   });
   const body = await response.json() as { exitoso: boolean; datos?: MovimientoDB; mensaje?: string };
   if (!response.ok || !body.exitoso || !body.datos) {
@@ -137,7 +209,7 @@ async function enviarDictamen(id: string, aprobado: 1 | 4, aprobadoPor: string):
 }
 
 async function solicitarScrapPorLinea(): Promise<ReporteScrapLinea> {
-  const response = await fetch(`${API_BASE}/movimientos/fallas-por-linea`);
+  const response = await solicitarGet(`${API_BASE}/movimientos/fallas-por-linea`);
   const body = await response.json() as {
     exitoso: boolean;
     datos?: ReporteScrapLinea['datos'];
@@ -150,9 +222,42 @@ async function solicitarScrapPorLinea(): Promise<ReporteScrapLinea> {
   return { datos: body.datos, periodo: body.periodo };
 }
 
+async function solicitarPreciosScrap(
+  periodo: PeriodoPrecioScrap,
+  pagina: number,
+  limite: number,
+  incluirResumen: boolean,
+): Promise<ReportePrecioScrap> {
+  const parametros = new URLSearchParams({
+    periodo,
+    pagina: String(pagina),
+    limite: String(limite),
+    incluirResumen: String(incluirResumen),
+  });
+  const response = await solicitarGet(`${API_BASE}/movimientos/precios?${parametros.toString()}`);
+  const body = await response.json() as {
+    exitoso: boolean;
+    resumen?: ReportePrecioScrap['resumen'];
+    datos?: ReportePrecioScrap['datos'];
+    pagina?: number;
+    limite?: number;
+    mensaje?: string;
+  };
+  if (!response.ok || !body.exitoso || (incluirResumen && !body.resumen) || !body.datos
+    || body.pagina === undefined || body.limite === undefined) {
+    throw new Error(body.mensaje || `No se pudieron cargar los precios (HTTP ${response.status}).`);
+  }
+  return {
+    resumen: body.resumen,
+    datos: body.datos,
+    pagina: body.pagina,
+    limite: body.limite,
+  };
+}
+
 async function solicitarComparativaMensual(mes: string): Promise<ComparativaMensual> {
   const parametros = new URLSearchParams({ mes });
-  const response = await fetch(`${API_BASE}/movimientos/comparativa-mensual?${parametros.toString()}`);
+  const response = await solicitarGet(`${API_BASE}/movimientos/comparativa-mensual?${parametros.toString()}`);
   const body = await response.json() as {
     exitoso: boolean;
     periodos?: ComparativaMensual['periodos'];
@@ -167,7 +272,7 @@ async function solicitarComparativaMensual(mes: string): Promise<ComparativaMens
 
 async function solicitarRazones(movimientoTipoId: number): Promise<OpcionRazon[]> {
   const parametros = new URLSearchParams({ movimientoTipoId: String(movimientoTipoId) });
-  const response = await fetch(`${API_BASE}/movimientos/razones?${parametros.toString()}`);
+  const response = await solicitarGet(`${API_BASE}/movimientos/razones?${parametros.toString()}`);
   const body = await response.json() as { exitoso: boolean; datos?: OpcionRazon[]; mensaje?: string };
   if (!response.ok || !body.exitoso || !body.datos) {
     throw new Error(body.mensaje || `No se pudieron cargar las opciones de razón (HTTP ${response.status}).`);
@@ -178,6 +283,7 @@ async function solicitarRazones(movimientoTipoId: number): Promise<OpcionRazon[]
 async function enviarActualizacionRazon(id: string, razonId: number | null): Promise<Movimiento> {
   const response = await fetch(`${API_BASE}/movimientos/${encodeURIComponent(id)}/razon`, {
     method: 'PATCH',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ razonId }),
   });
@@ -190,17 +296,23 @@ async function enviarActualizacionRazon(id: string, razonId: number | null): Pro
 
 /** El frontend consume el backend; la llamada a la API corporativa queda solo en servidor. */
 export const ScrapService = {
+  obtenerUsuarioAutenticado: () => solicitarUsuarioAutenticado(),
+  iniciarSesion: (usuario: string, contrasena: string) => enviarCredenciales(usuario, contrasena),
+  iniciarSesionWindows: () => iniciarSesionWindows(),
+  cerrarSesion: () => cerrarSesion(),
   obtenerMovimientos: (fechaInicio?: string, fechaFin?: string, filtros?: FiltrosBusquedaMovimientos) =>
     solicitarMovimientos(fechaInicio, fechaFin, filtros),
   obtenerAprobaciones: (fechaInicio?: string, fechaFin?: string) => solicitarAprobaciones(fechaInicio, fechaFin),
   obtenerMovimiento: (id: string) => solicitarMovimiento(id),
 
   obtenerScrapPorLinea: () => solicitarScrapPorLinea(),
+  obtenerPreciosScrap: (periodo: PeriodoPrecioScrap, pagina: number, limite: number, incluirResumen = true) =>
+    solicitarPreciosScrap(periodo, pagina, limite, incluirResumen),
   obtenerComparativaMensual: (mes: string) => solicitarComparativaMensual(mes),
   obtenerRazones: (movimientoTipoId: number) => solicitarRazones(movimientoTipoId),
   actualizarRazon: (id: string, razonId: number | null) => enviarActualizacionRazon(id, razonId),
 
-  aprobarMovimiento: (id: string, aprobadoPor: string) => enviarDictamen(id, 1, aprobadoPor),
+  aprobarMovimiento: (id: string) => enviarDictamen(id, 1),
 
-  rechazarMovimiento: (id: string, aprobadoPor: string) => enviarDictamen(id, 4, aprobadoPor),
+  rechazarMovimiento: (id: string) => enviarDictamen(id, 4),
 };

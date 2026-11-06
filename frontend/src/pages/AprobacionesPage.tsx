@@ -11,7 +11,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
-import { useDemoSession } from '../context/demoSession';
+import { useAuth } from '../context/authContext';
 import type { Movimiento } from '../types';
 import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
@@ -24,7 +24,7 @@ type DictamenPendiente = { movimiento: Movimiento; decision: Decision };
 
 export const AprobacionesPage: React.FC = () => {
   const { movimientos, aprobarMovimiento, dictaminarMovimientos, rechazarMovimiento } = useScrap();
-  const { usuario } = useDemoSession();
+  const { usuario } = useAuth();
   const [filtros, setFiltros] = useState<FiltrosMovimientoUI>({
     busqueda: '',
     estado: '0',
@@ -203,7 +203,7 @@ export const AprobacionesPage: React.FC = () => {
     setErrorDictamen(null);
     try {
       if (dictamenPendiente.decision === 1) {
-        await aprobarMovimiento(dictamenPendiente.movimiento.id, responsable);
+        await aprobarMovimiento(dictamenPendiente.movimiento.id, usuario?.nombre ?? '');
       } else {
         await rechazarMovimiento(dictamenPendiente.movimiento.id, responsable, comentarioRechazo);
       }
@@ -233,7 +233,7 @@ export const AprobacionesPage: React.FC = () => {
       </div>
 
       <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-xs text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
-        Los dictámenes se guardan en SOE y no se pueden deshacer desde esta aplicación. El login y los roles son de demostración, no verifican identidad ni permisos; el nombre que captures se guardará en <code>nvAprobadoPor</code>. Confirma que tienes autorización antes de continuar.
+        Los dictámenes se guardan en SOE y no se pueden deshacer desde esta aplicación. Se registrará automáticamente la cuenta de Windows autenticada en <code>nvAprobadoPor</code>.
       </div>
 
       <section aria-label="Resumen de movimientos" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -490,17 +490,17 @@ export const AprobacionesPage: React.FC = () => {
             {decisionMultiple === 1
               ? 'Se aprobarán los movimientos seleccionados.'
               : 'Se rechazarán los movimientos seleccionados.'} El cambio se guardará en la base de datos y no se puede deshacer desde la aplicación.
-            {' '}La cuenta y el rol de demostración no verifican tu identidad ni autorización.
+            {' '}La cuenta autenticada de Windows se guardará como responsable del dictamen.
           </p>
           <label htmlFor="responsable-aprobacion-multiple" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Nombre que quedará registrado como responsable (no verificado)
+            Cuenta de Windows que quedará registrada como responsable
             <input
               id="responsable-aprobacion-multiple"
               type="text"
               required
               maxLength={200}
               value={nombreResponsableMultiple}
-              onChange={(event) => setNombreResponsableMultiple(event.target.value)}
+              readOnly
               disabled={aprobacionMultipleEnviando}
               className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
@@ -572,7 +572,7 @@ export const AprobacionesPage: React.FC = () => {
           </p>
           <p className="text-xs text-slate-600 dark:text-slate-300">
             Esta acción actualizará los dictámenes en la base de datos y no se puede deshacer desde la aplicación.
-            {' '}La cuenta demo y el nombre registrado no verifican identidad ni autorización.
+            {' '}La cuenta autenticada de Windows se guardará como responsable del dictamen.
           </p>
           <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
             <Button
@@ -617,16 +617,13 @@ export const AprobacionesPage: React.FC = () => {
               {dictamenPendiente.movimiento.movimientoTipo} · {dictamenPendiente.movimiento.matnr} · {dictamenPendiente.movimiento.cantidad} piezas
             </p>
             <label htmlFor="nombre-responsable" className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-              Nombre que quedará registrado como responsable (no verificado)
+              Cuenta de Windows que quedará registrada como responsable
               <input
                 id="nombre-responsable"
                 name="nombre-responsable"
                 type="text"
-                autoComplete="name"
-                maxLength={200}
-                required
                 value={nombreResponsable}
-                onChange={(event) => setNombreResponsable(event.target.value)}
+                readOnly
                 disabled={dictamenEnviando}
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 placeholder="Nombre y apellido"

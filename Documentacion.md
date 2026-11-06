@@ -12,9 +12,9 @@ La siguiente separación evita confundir la interfaz con una integración comple
 | Escritura corporativa | Dictamen `aprobado`/`rechazado`; actualización de `RazonId` o `NULL`. |
 | Cálculo local sobre datos consultados | Filtros visuales, indicadores, reportes, orden y paginación; la mayoría de las gráficas. |
 | Local/mock | Catálogo de motivos, notificaciones, configuración visual, algunos atributos de ficha y datos de demostración. |
-| No conectado | Alta de movimientos, SAP, autenticación/roles, costos oficiales, OEE y transacciones masivas. |
+| No conectado | Alta de movimientos, SAP, costos oficiales, OEE y transacciones masivas. |
 
-Las escrituras cambian datos reales. Actualmente el backend no comprueba identidad ni rol gerente; el texto del responsable no es autenticación. No exponer el servicio fuera de una red controlada hasta integrar controles de acceso.
+Las escrituras cambian datos reales. El backend comprueba la sesión y el rol antes de atender rutas protegidas. No exponer el servicio fuera de una red controlada hasta configurar HTTPS y validar el despliegue integrado.
 
 ## 2. Arquitectura
 
@@ -74,8 +74,14 @@ El frontend de Vite usa normalmente `http://localhost:5173`; Express escucha sol
 | `DB_SERVER` | Nombre solicitado al servicio SQL (por defecto `EST02DB`). |
 | `DB_DATABASE` | Base solicitada (por defecto `SOE`). |
 | `DB_API_TIMEOUT` | Timeout de `fetch` en milisegundos (por defecto `20000`). |
+| `AUTH_MANAGER_USERNAME`, `AUTH_MANAGER_PASSWORD_SALT`, `AUTH_MANAGER_PASSWORD_HASH` | Cuenta local de Gerente y hash scrypt de su contraseña. |
+| `AUTH_SUPERINTENDENTE_USERNAME`, `AUTH_SUPERINTENDENTE_PASSWORD_SALT`, `AUTH_SUPERINTENDENTE_PASSWORD_HASH` | Cuenta local de Superintendente y hash scrypt de su contraseña. |
+| `AUTH_ADMIN_USERNAME`, `AUTH_ADMIN_PASSWORD_SALT`, `AUTH_ADMIN_PASSWORD_HASH` | Cuenta local opcional de Administrador. |
+| `AUTH_SESSION_SECRET` | Secreto de al menos 32 bytes para firmar las cookies de sesión. |
+| `WINDOWS_ADMIN_USERS` | Cuentas Windows/UPN autorizadas como Administrador, separadas por coma. |
+| `WINDOWS_AUTH_PROXY_KEY` | Secreto compartido entre IIS y Express para la ruta de inicio Windows. |
 
-`backend/.env` controla `PORT` (por defecto `3001`) y `CORS_ORIGINS`, una lista separada por comas de orígenes permitidos (por defecto `http://localhost:5173,http://127.0.0.1:5173`). Express escucha exclusivamente en `127.0.0.1`, por lo que este backend solo acepta conexiones desde el mismo equipo. CORS no sustituye autenticación ni bloquea clientes locales. `VITE_API_BASE_URL` permite definir la base de las rutas Express en el frontend; sin ella se usa `/api`. No almacenar credenciales en documentación o archivos versionados.
+`BaseDeDatos/.env` debe contener sales aleatorias y hashes scrypt, no contraseñas en texto claro. `backend/.env` controla `PORT` (por defecto `3001`) y `CORS_ORIGINS`. Express escucha exclusivamente en `127.0.0.1`. IIS sobrescribe los encabezados internos únicamente al autenticar `/api/auth/windows`. `VITE_API_BASE_URL` permite definir la base de las rutas Express en el frontend; sin ella se usa `/api`. No almacenar secretos en documentación o archivos versionados.
 
 ## 4. Arranque y estado de salud
 
@@ -151,15 +157,19 @@ La comparación es independiente de los rangos de Dashboard, Reportes y Fallas p
 
 | Método | Ruta | Validación/resultado |
 |---|---|---|
-| `GET` | `/api/health` | `status`, fecha, tipo de DB, estado más reciente, modo y nombres de tabla como metadatos estáticos. |
+| `POST` | `/api/auth/login` | Recibe usuario/contraseña; valida hash scrypt y establece cookie HttpOnly. |
+| `POST` | `/api/auth/logout` | Elimina la cookie de sesión. |
+| `GET` | `/api/auth/windows` | Solo identidad Windows de Administrador validada por IIS; emite cookie de sesión. |
+| `GET` | `/api/auth/me` | Devuelve la cuenta y rol de la sesión firmada. |
+| `GET` | `/api/health` | `status`, fecha, tipo de DB, estado más reciente y nombres de tabla como metadatos estáticos. Público. |
 | `GET` | `/api/movimientos` | `{ exitoso, datos, conteo }`; acepta fechas y filtros opcionales `tipoId`, `aprobado`, `razonId`, `certificacionId`, `lineaId`, `almacen`, `busqueda`. |
 | `GET` | `/api/movimientos/aprobaciones` | `{ exitoso, datos: [{ nombre, aprobaciones }], total }`; siempre `aprobado = 1`, agrupado por `nvAprobadoPor`; fechas opcionales para limitar por `dtAprobado`. |
-| `GET` | `/api/movimientos/comparativa-mensual?mes=YYYY-MM` | `{ exitoso, periodos, datos }`; agregado del mes seleccionado y el anterior. |
-| `GET` | `/api/movimientos/fallas-por-linea` | `{ exitoso, periodo, datos }`; periodo reciente calculado en el servidor. |
-| `GET` | `/api/movimientos/razones?movimientoTipoId=N` | `{ exitoso, datos: [{ id, descripcion }] }`; requiere tipo entero positivo. |
+| `GET` | `/api/movimientos/comparativa-mensual?mes=YYYY-MM` | `{ exitoso, periodos, datos }`; agregado del mes seleccionado y el anterior; solo Administrador. |
+| `GET` | `/api/movimientos/fallas-por-linea` | `{ exitoso, periodo, datos }`; periodo reciente calculado en el servidor; solo Administrador. |
+| `GET` | `/api/movimientos/razones?movimientoTipoId=N` | `{ exitoso, datos: [{ id, descripcion }] }`; requiere tipo entero positivo y rol Administrador. |
 | `GET` | `/api/movimientos/:id` | `{ exitoso, datos }`; entero y respuesta 404 si no existe. |
-| `PATCH` | `/api/movimientos/:id/razon` | JSON `{ razonId: entero positivo | null }`; la ruta valida la razón pero el middleware actual responde 403. |
-| `PATCH` | `/api/movimientos/:id/dictamen` | JSON `{ aprobado: 1 | 4, aprobadoPor: string }`; `1` aprueba, `4` rechaza y solo modifica pendiente `0`. |
+| `PATCH` | `/api/movimientos/:id/razon` | JSON `{ razonId: entero positivo | null }`; valida la razón y requiere rol Administrador. |
+| `PATCH` | `/api/movimientos/:id/dictamen` | JSON `{ aprobado: 1 | 4 }`; `1` aprueba, `4` rechaza, solo modifica pendiente `0` y el servidor registra la identidad de sesión. |
 
 Las rutas literales (`fallas-por-linea`, `razones`) y rutas de acción se registran antes de `/:id`. Al rechazar Scrap desde la interfaz, se exige un comentario y se muestra en Movimientos durante la sesión actual. No se envía a Express ni se persiste; se pierde al recargar la aplicación. En rechazo múltiple, el comentario se aplica a cada movimiento Scrap seleccionado.
 
@@ -170,17 +180,20 @@ Las rutas literales (`fallas-por-linea`, `razones`) y rutas de acción se regist
 Los controllers responden JSON `{ exitoso: false, mensaje }`. Según la operación se esperan:
 
 - `400`: parámetro/rango/ID/tipo/razón/dictamen inválidos.
+- `401`: credenciales/sesión no válidas o ausentes.
+- `403`: el rol no está autorizado para la operación.
+- `503`: falta una configuración de autenticación requerida.
 - `404`: movimiento inexistente.
 - `409`: el dictamen ya no está pendiente o el `UPDATE` no afectó la fila.
 - `500`: error de API SQL, lectura, actualización o verificación.
 
-`GET /api/movimientos/:id` exige un ID decimal positivo completo y seguro; no acepta sufijos, decimales, cero ni valores fuera del rango seguro. Los endpoints de escritura exigen también ID positivo seguro. El controller del dictamen acepta únicamente `1` (aprobado) o `4` (rechazado) y nombre recortado de 1 a 200 caracteres. El valor `2` ya no se interpreta ni se escribe como rechazo; los datos históricos no se migran. `razonId` debe ser `null` o entero positivo seguro.
+`GET /api/movimientos/:id` exige un ID decimal positivo completo y seguro; no acepta sufijos, decimales, cero ni valores fuera del rango seguro. Los endpoints de escritura exigen también ID positivo seguro. El controller del dictamen acepta únicamente `1` (aprobado) o `4` (rechazado); el responsable se obtiene de la sesión autenticada del servidor, no del cuerpo HTTP. El valor `2` ya no se interpreta ni se escribe como rechazo; los datos históricos no se migran. `razonId` debe ser `null` o entero positivo seguro.
 
 ## 8. Escrituras de negocio
 
 ### Dictamen individual
 
-`PATCH /api/movimientos/:id/dictamen` repite las validaciones en controller y cliente SQL. El nombre se recorta en controller y se escapan apóstrofos antes de insertarlo como literal SQL Unicode. El `UPDATE` fijo:
+`PATCH /api/movimientos/:id/dictamen` repite las validaciones en controller y cliente SQL. La identidad proviene de la sesión validada en backend; se escapan apóstrofos antes de insertarla como literal SQL Unicode. El `UPDATE` fijo:
 
 ```sql
 UPDATE dbo.Movimientos
@@ -190,17 +203,17 @@ SET aprobado = 1 | 4,
 WHERE id = ... AND aprobado = 0
 ```
 
-El repositorio vuelve a leer el movimiento. Si no existe, responde 404; si no se actualizó/no era pendiente, 409; al confirmar, devuelve el registro actualizado. Los `NULL` no son candidatos por la condición `aprobado = 0`. El nombre guardado no es autenticación. Para rechazo de Scrap, la interfaz pide comentario, pero el esquema actual no lo admite: se conserva solo en memoria de la sesión del navegador y no se envía al backend, no se escribe en SQL y se pierde al recargar.
+El repositorio vuelve a leer el movimiento. Si no existe, responde 404; si no se actualizó/no era pendiente, 409; al confirmar, devuelve el registro actualizado. Los `NULL` no son candidatos por la condición `aprobado = 0`. El valor `nvAprobadoPor` es el nombre asociado a la sesión autenticada. Para rechazo de Scrap, la interfaz pide comentario, pero el esquema actual no lo admite: se conserva solo en memoria de la sesión del navegador y no se envía al backend, no se escribe en SQL y se pierde al recargar.
 
 ### Dictamen múltiple
 
-El frontend toma IDs seleccionados que continúan visibles, solicita nombre y confirmación, y ejecuta cada dictamen de forma secuencial mediante la misma ruta individual. Informa registros exitosos y fallidos. Los fallidos permanecen seleccionados para reintentar. No hay transacción de lote, rollback ni garantía de atomicidad.
+El frontend toma IDs seleccionados que continúan visibles y confirmación; la identidad se deriva de la sesión en el servidor. Ejecuta cada dictamen secuencialmente mediante la misma ruta individual. Informa registros exitosos y fallidos. Los fallidos permanecen seleccionados para reintentar. No hay transacción de lote, rollback ni garantía de atomicidad.
 
 ### Actualización de razón
 
-`GET /api/movimientos/razones?movimientoTipoId=N` agrupa razones con descripción no vacía desde `dbo.vw_Scrap_PowerBI`. La ruta de `PATCH /api/movimientos/:id/razon` implementa validación de pertenencia al catálogo y actualización de `dbo.Movimientos.RazonId`, pero en la configuración actual queda bloqueada por el middleware (HTTP 403). La tabla `dbo.EtiquetasCI` no se usa porque no existe en la base consultada.
+`GET /api/movimientos/razones?movimientoTipoId=N` agrupa razones con descripción no vacía desde `dbo.vw_Scrap_PowerBI`. La ruta de `PATCH /api/movimientos/:id/razon` implementa validación de pertenencia al catálogo y actualización de `dbo.Movimientos.RazonId`; requiere rol Administrador. La tabla `dbo.EtiquetasCI` no se usa porque no existe en la base consultada.
 
-Ambos cambios son persistentes y no tienen autenticación/autorización en el backend actual.
+Ambos cambios son persistentes. Para la configuración de IIS y las variables de autenticación, consultar [Windows Authentication en IIS](IIS-Windows-Authentication.md).
 
 ## 9. Modelo SQL utilizado
 
@@ -224,14 +237,14 @@ Rutas React bajo `MainLayout`:
 
 | Ruta | Página | Alcance |
 |---|---|---|
-| `/dashboard` | `DashboardPage` | Solo Administrador demo: filtro de fechas, tendencia, SCRAP por línea desglosado por motivo, Top de razones y gráficas por empleado/aprobador. |
+| `/dashboard` | `DashboardPage` | Solo Administrador autorizado: filtro de fechas, tendencia, SCRAP por línea desglosado por motivo, Top de razones y gráficas por empleado/aprobador. |
 | `/movimientos` | `MovimientosPage` | Tabla con `Empleado` presentado como Supervisor, fecha de emisión y aprobación, filtros guiados compartidos, orden, paginación visual y CSV. |
 | `/movimientos/:id` | `MovimientoDetallePage` | Ficha y edición persistente de razón. Usa el movimiento presente en el contexto; no hace una solicitud de detalle por separado. |
 | `/aprobaciones` | `AprobacionesPage` | Indicadores de Scrap/pendientes/aprobados/rechazados que filtran la tabla, columna Supervisor (`dbo.Movimientos.Empleado`), filtros compartidos, paginación de 10/25/50 filas, selección y dictamen para pendientes. |
 | `/fallas-por-linea` | `FallasPorLineaPage` | Agregado SQL, periodo, búsqueda local, barras horizontales y tabla. |
 | `/reportes` | `ReportesPage` | Filtrado y agrupación de movimientos cargados; con ambas fechas seleccionadas, consulta al backend el rango inclusivo solicitado. |
-| `/comparativa-mensual` | `ComparativaMensualPage` | Solo Administrador demo; comparación mensual SQL para cuatro gráficas, con descripción de razón, picos y estados de error/sin datos. |
-| `/filtros` | `FiltrosPage` | Solo Administrador demo; consulta del mes calendario elegido con filtros opcionales al solicitar Buscar. |
+| `/comparativa-mensual` | `ComparativaMensualPage` | Solo Administrador autorizado; comparación mensual SQL para cuatro gráficas, con descripción de razón, picos y estados de error/sin datos. |
+| `/filtros` | `FiltrosPage` | Solo Administrador autorizado; consulta del mes calendario elegido con filtros opcionales al solicitar Buscar. |
 | `/motivos` | `MotivosPage` | Catálogo local, referencia y formularios locales. |
 | `/configuracion` | `ConfiguracionPage` | Parámetros de presentación; botón de guardado solo muestra confirmación. |
 
@@ -243,7 +256,7 @@ Movimientos y Aprobaciones comparten controles grandes de búsqueda por folio/se
 
 La vista Filtros paso a paso propone el mes calendario de la fecha más reciente disponible. El usuario puede elegir filtros y pulsa Buscar para enviarlos a `GET /api/movimientos`; el servidor valida parámetros, consulta el rango y aplica los criterios disponibles sobre el resultado. La fecha final elegida se convierte al límite exclusivo del día siguiente. Cambiar una opción no ejecuta una llamada hasta pulsar Buscar.
 
-La tabla de Movimientos presenta `dbo.Movimientos.Empleado` bajo la columna Supervisor y `dtAprobado` como Fecha aprobación; un registro pendiente muestra “Sin aprobar”. Dashboard, Comparación mensual y Filtros paso a paso son exclusivos de Administrador demo. Gerente y Superintendente solo tienen Movimientos y Aprobaciones. Las rutas restringidas redirigen al intentar abrirlas directamente; esto continúa siendo navegación de interfaz, no autorización del backend.
+La tabla de Movimientos presenta `dbo.Movimientos.Empleado` bajo la columna Supervisor y `dtAprobado` como Fecha aprobación; un registro pendiente muestra “Sin aprobar”. Dashboard, Comparación mensual y Filtros paso a paso son exclusivos de Administrador. Por ahora solo la cuenta `alejandro.puente1@magna.com` se configura como Administrador; otras cuentas son denegadas tanto por rutas API como por la interfaz.
 
 Las tablas de Movimientos y Aprobaciones permiten desplazamiento horizontal cuando no caben en la pantalla y envuelven los valores largos en varias líneas para evitar recortes o puntos suspensivos. En pantallas pequeñas la tabla puede ocupar más ancho que el viewport; se desplaza dentro de su contenedor.
 
@@ -256,27 +269,23 @@ Motivos/notificaciones se inicializan de datos de `frontend/src/mock/data.ts` y 
 - `GET /api/health` es una instantánea del último estado, no un chequeo por petición. Una respuesta `online` no asegura que la próxima consulta corporativa funcione.
 - La lista de movimientos no tiene paginación de servidor. El volumen del periodo se descarga a Node y se envía al frontend; filtros de certificación/razón siguen aplicándose en memoria. En Reportes, al elegir ambas fechas se vuelve a consultar ese intervalo en el servidor (fin inclusivo); evita rangos innecesariamente amplios.
 - La API corporativa es un ejecutor SQL genérico. El backend controla sus propias llamadas, pero los permisos efectivos deben restringirse en el servicio corporativo.
-- Express limita CORS por origen, pero todavía no autentica usuarios ni autoriza roles. Las rutas de lectura siguen accesibles a cualquier cliente que alcance el servidor. En el modo actual, se permiten `PATCH /api/movimientos/:id/dictamen` desde cualquier cliente que alcance el backend; los `PATCH` restantes, incluido cambio de razón, responden 403. La UI no es una frontera de autorización.
-- No publicar hasta integrar autenticación/autorización y auditoría del lado del servidor; configurar los orígenes CORS reales; revisar redes y TLS; asegurar permisos mínimos de la API; y limitar volumen con paginación/filtrado SQL si hace falta.
+- Todas las rutas `/api` requieren identidad validada por IIS, secreto compartido del proxy y cuenta Windows en la lista autorizada. El backend guarda la identidad autenticada en `nvAprobadoPor`; no acepta un nombre de responsable de parte del navegador.
+- Antes de publicar, completar el despliegue integrado IIS/Windows Authentication/ARR para `/api/auth/windows`, configurar los orígenes CORS reales, TLS, secretos privados, permisos mínimos de la API y paginación/filtrado SQL si hace falta. La prueba unitaria no sustituye la validación del dominio en IIS.
 - No poner secretos en `.md`, repositorio ni logs. Mantener HTTPS y certificados confiables.
 
 Para detalles de conexión y campos, consultar [Conexión a datos](BaseDeDatos/ConexionBaseDatos.md) y [Diccionario de datos](BaseDeDatos/Diccionario_Datos_Movimientos.md).
 
 La interfaz usa fuentes del sistema disponibles en el equipo y no carga tipografías desde Google Fonts ni desde otros servidores externos. Esto evita solicitudes externas de recursos de presentación y permite mostrar las pantallas sin acceso a Internet; no elimina la conexión corporativa requerida por el backend para consultar SOE.
 
-## 14. Acceso de demostración y permisos de interfaz (2 de noviembre de 2026)
+## Autenticación de Windows
 
-La pantalla de entrada ofrece seis identidades de prueba, sin contraseña: dos Administradores, dos Gerentes y dos Superintendentes. El rol se asigna a partir de la identidad de demostración elegida y se muestra en la cabecera. La sesión se conserva en `sessionStorage`.
+El frontend consulta `GET /api/auth/me` al iniciar. Gerente y Superintendente usan credenciales locales con hashes scrypt configurados en `BaseDeDatos/.env`; Administrador puede iniciar sesión localmente si se configura esa cuenta o usar Windows Authentication en IIS. El backend firma una cookie HttpOnly con expiración y aplica las restricciones por rol también en las rutas. No confía en un rol enviado por el frontend. Consulta [Configuración de IIS](IIS-Windows-Authentication.md).
 
-En la interfaz, Dashboard, Comparación mensual y Filtros paso a paso son exclusivos de Administrador. Gerente y Superintendente tienen Movimientos, detalle de movimiento y Aprobaciones. Administrador ve todas las secciones. Las rutas restringidas redirigen al abrirse directamente; esto es únicamente navegación/experiencia de demostración: los roles no están autenticados y no se validan en backend.
+Express escucha solo en loopback. Los dictámenes guardan la identidad de la sesión en `nvAprobadoPor`; el cliente no puede suplantarla. El inicio Windows integrado con IIS/ARR no se probó en este equipo; las pruebas automatizadas no certifican la negociación Kerberos/NTLM. Consulta [Configuración de IIS](IIS-Windows-Authentication.md).
 
-Los controles de aprobación individual y múltiple están habilitados para todos los roles de la interfaz demo. Los dictámenes modifican datos reales de SOE y no pueden deshacerse desde SCRAPControl. El backend solo permite `PATCH /api/movimientos/:id/dictamen`; las demás escrituras, incluido el cambio de razón, siguen bloqueadas con HTTP 403. El nombre prellenado proviene del usuario demo, pero puede editarse y no acredita identidad. Ni el login, ni los roles ni el nombre se verifican en el servidor; cualquier cliente que alcance el backend puede solicitar un dictamen. Este cambio fue autorizado para habilitar aprobaciones en la demostración, pero no vuelve seguro el servicio para una red compartida. Mantenerlo local/controlado hasta implementar y probar autenticación, permisos y auditoría en el servidor.
+La pantalla Aprobaciones muestra tarjetas de total de piezas Scrap, pendientes, aprobados y rechazados; las tarjetas de estado filtran las filas y solo las pendientes conservan botones de dictamen. Movimientos y Aprobaciones usan el mismo panel guiado de búsqueda. La ruta Filtros paso a paso consulta por rango y criterios al pulsar Buscar. La tabla de Movimientos presenta `dbo.Movimientos.Empleado` en Supervisor y `dtAprobado` en Fecha aprobación. Al pulsar Aprobar o Denegar se muestra un diálogo de confirmación y el comentario obligatorio al denegar Scrap; el responsable se obtiene del inicio de sesión Windows.
 
-La pantalla Aprobaciones muestra tarjetas de total de piezas Scrap, pendientes, aprobados y rechazados; las tarjetas de estado filtran las filas y solo las pendientes conservan botones de dictamen. Movimientos y Aprobaciones usan el mismo panel guiado de búsqueda. La ruta Filtros paso a paso consulta por rango y criterios al pulsar Buscar. La tabla de Movimientos presenta `dbo.Movimientos.Empleado` en Supervisor y `dtAprobado` en Fecha aprobación. Al pulsar Aprobar o Denegar en una fila pendiente abre un solo diálogo «¿Estás seguro…?», sin pasar por la pantalla intermedia de revisión; el diálogo conserva la captura del nombre y el comentario obligatorio al denegar Scrap.
-
-El Dashboard muestra piezas Scrap por línea en barras apiladas por motivo. El nombre abreviado del motivo se imprime dentro de cada segmento de color; los segmentos pequeños se amplían visualmente para que el texto quepa y la referencia inferior conserva los nombres completos. Por esta expansión, la longitud de los segmentos pequeños no es proporcional a las piezas: consultar el tooltip para cantidades exactas. «TOP RAZONES SCRAP» permanece debajo a ancho completo. También muestra al Administrador demo dos gráficas: suma de `cantidad` Scrap por `Empleado` en los movimientos del periodo seleccionado y conteo de las filas de `dbo.Movimientos` con `aprobado = 1`, agrupadas por el nombre de `nvAprobadoPor`. La gráfica de aprobaciones ofrece dos modos: todas las filas aprobadas de la tabla, o el mismo periodo del Dashboard, filtrado por `dtAprobado`; no filtra por tipo de movimiento. Incluye «Sin responsable registrado» y todas las barras por nombre para que sumen el total. El nombre capturado no verifica identidad. Cuenta estado actual por fila, no historial de cambios de dictamen. La condición de visibilidad es solo frontend; el endpoint de movimientos sigue devolviendo columnas de `dbo.Movimientos` a clientes que alcancen el backend, por lo que la información no está protegida por rol. Mantener el servicio local/controlado hasta implementar autorización y minimización de datos en servidor.
-
-Las gráficas «Piezas SCRAP por línea y motivo» y «TOP RAZONES SCRAP» se presentan una debajo de la otra a ancho completo. En la primera, cada línea tiene una barra apilada por motivo y el nombre abreviado se imprime dentro de cada segmento; el tooltip y la referencia inferior adaptativa muestran la cantidad y el nombre completo. Los segmentos pequeños tienen un mínimo visual para permitir leer el motivo, por lo que su longitud no expresa con precisión las cantidades pequeñas. «Sin razón» y razones sin descripción son categorías distintas.
+El Dashboard muestra piezas Scrap por línea en barras apiladas por motivo. El nombre abreviado del motivo se imprime dentro de cada segmento de color; los segmentos pequeños se amplían visualmente para que el texto quepa y la referencia inferior conserva los nombres completos. Por esta expansión, la longitud de los segmentos pequeños no es proporcional a las piezas: consultar el tooltip para cantidades exactas. «TOP RAZONES SCRAP» permanece debajo a ancho completo. Las gráficas administrativas muestran suma de `cantidad` Scrap por `Empleado` y conteo de filas con `aprobado = 1`, agrupadas por `nvAprobadoPor`; cuentan estado actual, no historial de dictámenes.
 
 ## 12. Verificación funcional ejecutada
 
@@ -298,9 +307,9 @@ Esta ronda de cambios de código se verificó localmente con compilación backen
 | Reportes | Con fecha inicial y final se consulta de nuevo el rango en el backend. La fecha final elegida se convierte al límite exclusivo del día siguiente; fechas incompletas o en orden incorrecto no presentan resultados parciales y muestran un aviso. |
 | Comparativa de razones | La agregación mensual incorpora la descripción disponible del catálogo además del `RazonId`; las razones sin descripción conservan su ID y los registros sin razón se etiquetan explícitamente. |
 | Estado de conexión | Una respuesta no JSON de la API SQL ahora marca la conexión como fallida y registra el mensaje en `ultimoError`. |
-| Textos de interfaz | Se quitaron el nombre/correo/rol de aprobador ficticios, las afirmaciones no integradas sobre desvío a retrabajo y firma/SAP, y la promesa de alerta automática en Configuración. El perfil ahora declara que la sesión no está autenticada. |
+| Textos de interfaz | Se quitaron nombres/roles ficticios y afirmaciones no integradas. El perfil actual muestra la cuenta autenticada por Windows. |
 
-**Pendiente crítico:** no se integró autenticación ni autorización. La persona responsable y el rol «Aprobador» mencionados en la interfaz no verifican identidad ni permisos. El usuario indicó que aún no dispone de un proveedor identificado; la integración queda pendiente hasta elegir uno. Limitar CORS mejora el control de acceso desde navegadores, pero no impide solicitudes de otros clientes ni protege por sí solo las rutas. Mantener el API en una red controlada y no exponerlo públicamente mientras no tenga autorización real del lado servidor.
+**Estado actual de acceso:** el login local por contraseña y la sesión firmada están implementados; Windows Authentication para Administrador requiere configuración de ruta en IIS/ARR, sobrescritura de encabezados, HTTPS y secreto compartido. La prueba unitaria no certifica el inicio de sesión integrado desde una laptop.
 
 **Pendiente de capacidad:** los movimientos siguen sin paginación del lado servidor; la consulta inicial y los intervalos amplios pueden traer muchas filas. La búsqueda y ciertos filtros siguen aplicándose en memoria.
 
@@ -308,9 +317,9 @@ Esta ronda de cambios de código se verificó localmente con compilación backen
 
 ## 15. Reorganización de filtros y validación de interfaces
 
-Se recorrieron las diez rutas del Administrador demo (`/dashboard`, `/movimientos`, `/movimientos/:id`, `/aprobaciones`, `/motivos`, `/fallas-por-linea`, `/reportes`, `/comparativa-mensual`, `/configuracion` y `/filtros`) con fixtures interceptados en escritorio. En móvil (390 px) se comprobaron Movimientos, Aprobaciones, Comparación mensual y Filtros. Las tarjetas de Aprobaciones filtraron las filas de estado correspondiente y Total de piezas volvió a mostrar todos los estados; Filtros consultó el fixture al pulsar Buscar. En esa revisión Gerente inició directamente en Aprobaciones, no mostró Dashboard, tuvo accesibles Comparación mensual y Filtros y fue redirigido desde Dashboard. La columna Fecha aprobación se encontró en Movimientos. La configuración de roles se ajustó después, según la siguiente nota.
+Se recorrieron las diez rutas de la interfaz anterior con fixtures interceptados en escritorio. En móvil (390 px) se comprobaron Movimientos, Aprobaciones, Comparación mensual y Filtros. Las tarjetas de Aprobaciones filtraron las filas de estado correspondiente y Total de piezas volvió a mostrar todos los estados; Filtros consultó el fixture al pulsar Buscar. La columna Fecha aprobación se encontró en Movimientos. Esta revisión visual histórica no validó autenticación; el selector de usuarios utilizado entonces fue eliminado y sustituido por la verificación Windows del servidor.
 
-No se observaron desbordamientos horizontales en las páginas verificadas ni errores de consola/excepciones. Se interceptaron las solicitudes API y se rechazaron las salidas a otros orígenes; no se observó ninguna solicitud externa ni se envió un PATCH. Superintendente también inició en Aprobaciones, no vio Dashboard, mantuvo acceso a Comparación mensual y Filtros, y sus cuatro páginas disponibles no tuvieron overflow en móvil. Estas pruebas no validan datos reales, persistencia, exportación/impresión ni autorización de backend. El recorrido previo también comprobó menú móvil y retiro de fuentes externas; el backend sigue requiriendo la API corporativa para consultar SOE. La verificación de los cambios de acceso posteriores se registra en la nota final.
+No se observaron desbordamientos horizontales en las páginas verificadas ni errores de consola/excepciones. Se interceptaron las solicitudes API y se rechazaron las salidas a otros orígenes; no se observó ninguna solicitud externa ni se envió un PATCH. Las validaciones visuales de acceso por roles correspondían al selector de la versión anterior y no representan la autorización actual. Estas pruebas no validan datos reales, persistencia, exportación/impresión ni IIS/Windows Authentication. El recorrido previo también comprobó menú móvil y retiro de fuentes externas; el backend sigue requiriendo la API corporativa para consultar SOE.
 
 Validación automatizada de código: `npm test` pasó con 9 pruebas, `npm run build` pasó para backend y frontend, y lint terminó sin errores. Permanecen tres advertencias previas en `AnimatedValue.tsx`, `ThemeContext.tsx` y `ScrapContext.tsx`. `git diff --check` pasó.
 

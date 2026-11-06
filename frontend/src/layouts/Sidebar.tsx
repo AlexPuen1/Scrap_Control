@@ -10,9 +10,10 @@ import {
   ChevronRight,
   Factory,
   Search,
+  DollarSign,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
-import { useDemoSession } from '../context/demoSession';
+import { useAuth } from '../context/authContext';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -28,7 +29,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
 }) => {
   const { resumenKPIs } = useScrap();
-  const { usuario } = useDemoSession();
+  const { usuario } = useAuth();
 
   const navItems = [
     {
@@ -54,6 +55,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-amber-500 text-white',
     },
     {
+      to: '/precio',
+      label: 'Precio',
+      icon: <DollarSign className="w-5 h-5 shrink-0" />,
+    },
+    {
       to: '/fallas-por-linea',
       label: 'Fallas por línea',
       icon: <Factory className="w-5 h-5 shrink-0" />,
@@ -66,7 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
   const navItemsVisibles = usuario?.rol === 'Administrador'
     ? navItems
-    : navItems.filter((item) => ['/movimientos', '/aprobaciones'].includes(item.to));
+    : navItems.filter((item) => ['/movimientos', '/aprobaciones', '/precio'].includes(item.to));
 
   return (
     <>

@@ -4,7 +4,6 @@ frontend/node_modules/
 
 # Compilados de producción
 dist/
-
 dist-ssr/
 frontend/dist/
 frontend/dist-ssr/

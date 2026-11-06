@@ -109,6 +109,46 @@ export async function getAprobaciones(req: Request, res: Response) {
   }
 }
 
+export async function getPreciosScrap(req: Request, res: Response) {
+  const periodos = ['mes', 'dos-meses', 'seis-meses', 'anio', 'historico'] as const;
+  const periodo = req.query.periodo === undefined ? 'mes' : req.query.periodo;
+  const pagina = req.query.pagina === undefined ? '1' : req.query.pagina;
+  const limite = req.query.limite === undefined ? '10' : req.query.limite;
+  const incluirResumen = req.query.incluirResumen === undefined ? 'true' : req.query.incluirResumen;
+
+  if (typeof periodo !== 'string' || !periodos.includes(periodo as (typeof periodos)[number])
+    || typeof pagina !== 'string' || !/^[1-9]\d*$/.test(pagina)
+    || typeof limite !== 'string' || !['10', '25', '50'].includes(limite)
+    || typeof incluirResumen !== 'string' || !['true', 'false'].includes(incluirResumen)) {
+    res.status(400).json({
+      exitoso: false,
+      mensaje: 'El periodo o los parámetros de paginación no son válidos.',
+    });
+    return;
+  }
+
+  const paginaNumero = Number(pagina);
+  if (!Number.isSafeInteger(paginaNumero) || paginaNumero > 100000) {
+    res.status(400).json({
+      exitoso: false,
+      mensaje: 'La página solicitada está fuera del rango permitido.',
+    });
+    return;
+  }
+
+  try {
+    const reporte = await repo.obtenerPreciosScrap(
+      periodo as (typeof periodos)[number],
+      paginaNumero,
+      Number(limite),
+      incluirResumen === 'true',
+    );
+    res.json({ exitoso: true, ...reporte });
+  } catch (error) {
+    responderErrorInterno(res, 'Error al obtener precios de Scrap', 'Error interno al obtener los precios.', error);
+  }
+}
+
 export async function getMovimientoById(req: Request, res: Response) {
   if (!/^[1-9]\d*$/.test(req.params.id)) {
     res.status(400).json({ exitoso: false, mensaje: 'ID de movimiento inválido.' });
@@ -187,11 +227,11 @@ export async function registrarDictamen(req: Request, res: Response) {
   }
 
   const aprobado = req.body?.aprobado;
-  const aprobadoPor = typeof req.body?.aprobadoPor === 'string' ? req.body.aprobadoPor.trim() : '';
-  if ((aprobado !== 1 && aprobado !== 4) || aprobadoPor.length === 0 || aprobadoPor.length > 200) {
+  const aprobadoPor = req.usuarioAutenticado?.nombre;
+  if ((aprobado !== 1 && aprobado !== 4) || !aprobadoPor) {
     res.status(400).json({
       exitoso: false,
-      mensaje: 'Indica si apruebas o rechazas y captura el nombre del responsable (máximo 200 caracteres).',
+      mensaje: 'Indica si apruebas o rechazas el movimiento.',
     });
     return;
   }

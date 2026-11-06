@@ -2,14 +2,15 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { ScrapProvider } from './context/ScrapContext';
-import { DemoSessionProvider } from './context/DemoSessionProvider';
-import { useDemoSession } from './context/demoSession';
+import { AuthProvider } from './context/AuthProvider';
+import { useAuth } from './context/authContext';
 import { MainLayout } from './layouts/MainLayout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { MovimientosPage } from './pages/MovimientosPage';
 import { MovimientoDetallePage } from './pages/MovimientoDetallePage';
 import { AprobacionesPage } from './pages/AprobacionesPage';
+import { PrecioPage } from './pages/PrecioPage';
 import { MotivosPage } from './pages/MotivosPage';
 import { FallasPorLineaPage } from './pages/FallasPorLineaPage';
 import { ReportesPage } from './pages/ReportesPage';
@@ -18,8 +19,17 @@ import { ConfiguracionPage } from './pages/ConfiguracionPage';
 import { FiltrosPage } from './pages/FiltrosPage';
 
 const AppRoutes: React.FC = () => {
-  const { usuario } = useDemoSession();
-  if (!usuario) return <LoginPage />;
+  const { usuario, cargando, error, iniciarSesion, iniciarSesionWindows } = useAuth();
+  if (cargando || !usuario) {
+    return (
+      <LoginPage
+        cargando={cargando}
+        error={error}
+        onIniciarSesion={iniciarSesion}
+        onIniciarSesionWindows={iniciarSesionWindows}
+      />
+    );
+  }
 
   const administrador = usuario.rol === 'Administrador';
   const inicio = administrador ? '/dashboard' : '/aprobaciones';
@@ -32,6 +42,7 @@ const AppRoutes: React.FC = () => {
           <Route path="movimientos" element={<MovimientosPage />} />
           <Route path="movimientos/:id" element={<MovimientoDetallePage />} />
           <Route path="aprobaciones" element={<AprobacionesPage />} />
+          <Route path="precio" element={<PrecioPage />} />
           <Route path="motivos" element={administrador ? <MotivosPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="fallas-por-linea" element={administrador ? <FallasPorLineaPage /> : <Navigate to="/dashboard" replace />} />
           <Route path="reportes" element={administrador ? <ReportesPage /> : <Navigate to="/dashboard" replace />} />
@@ -48,9 +59,9 @@ const AppRoutes: React.FC = () => {
 export const App: React.FC = () => (
   <BrowserRouter>
     <ThemeProvider>
-      <DemoSessionProvider>
+      <AuthProvider>
         <AppRoutes />
-      </DemoSessionProvider>
+      </AuthProvider>
     </ThemeProvider>
   </BrowserRouter>
 );

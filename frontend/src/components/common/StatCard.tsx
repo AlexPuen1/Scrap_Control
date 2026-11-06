@@ -15,6 +15,8 @@ interface StatCardProps {
   colorAccent?: 'blue' | 'amber' | 'emerald' | 'rose' | 'purple';
   onClick?: () => void;
   active?: boolean;
+  stacked?: boolean;
+  valorClassName?: string;
   /** Retraso de entrada (segundos) para escalonar varias tarjetas. */
   delay?: number;
 }
@@ -56,6 +58,8 @@ export const StatCard: React.FC<StatCardProps> = ({
   colorAccent = 'blue',
   onClick,
   active = false,
+  stacked = false,
+  valorClassName,
   delay = 0,
 }) => {
   const accent = ACCENTS[colorAccent];
@@ -89,13 +93,25 @@ export const StatCard: React.FC<StatCardProps> = ({
         className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accent.bar} opacity-80 group-hover:opacity-100 transition-opacity`}
       />
 
-      <div className="flex items-start justify-between gap-3">
+      <div className={stacked ? 'flex flex-col gap-1' : 'flex items-start justify-between gap-3'}>
+        {stacked && (
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold tracking-wider text-slate-500 uppercase dark:text-slate-400">
+              {titulo}
+            </span>
+            <div className={`rounded-lg p-1 [&_svg]:h-5 [&_svg]:w-5 ${accent.icon} shrink-0 transition-transform duration-300 group-hover:scale-105`}>
+              {icono}
+            </div>
+          </div>
+        )}
         <div className="min-w-0">
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider uppercase">
-            {titulo}
-          </span>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white font-mono tabular-nums">
+          {!stacked && (
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider uppercase">
+              {titulo}
+            </span>
+          )}
+          <div className={`${stacked ? 'mt-1' : 'mt-2'} flex items-baseline gap-2`}>
+            <span className={`${valorClassName ?? 'text-2xl sm:text-3xl'} font-bold tracking-tight text-slate-900 dark:text-white font-mono tabular-nums`}>
               <AnimatedValue value={valor} />
             </span>
           </div>
@@ -106,11 +122,13 @@ export const StatCard: React.FC<StatCardProps> = ({
           )}
         </div>
 
-        <div
-          className={`p-3 rounded-xl ${accent.icon} shrink-0 transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6`}
-        >
-          {icono}
-        </div>
+        {!stacked && (
+          <div
+            className={`p-3 rounded-xl ${accent.icon} shrink-0 transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6`}
+          >
+            {icono}
+          </div>
+        )}
       </div>
 
       {variacion && (

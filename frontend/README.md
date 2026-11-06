@@ -16,14 +16,14 @@ Interfaz React 19 + TypeScript + Vite. El frontend consume únicamente las rutas
 
 | Ruta | Página | Datos y comportamiento |
 |---|---|---|
-| `/dashboard` | `DashboardPage` | Solo Administrador demo. Permite otro rango con consulta API, muestra tendencias, exportación y gráficas por empleado/aprobador. |
+| `/dashboard` | `DashboardPage` | Solo Administrador autenticado. Permite otro rango con consulta API, muestra tendencias, exportación y gráficas por empleado/aprobador. |
 | `/movimientos` | `MovimientosPage` | Tabla con supervisor reportante (valor de `dbo.Movimientos.Empleado`), fecha de emisión y fecha de aprobación; filtros guiados y búsqueda. |
 | `/movimientos/:id` | `MovimientoDetallePage` | Encuentra el registro dentro del contexto cargado y presenta ficha/razón. Carga opciones de razón del backend y permite persistir su selección. |
 | `/aprobaciones` | `AprobacionesPage` | Cuatro indicadores clicables para piezas Scrap, pendientes, aprobados y rechazados; cada tarjeta filtra el listado. Incluye la columna Supervisor con el valor `dbo.Movimientos.Empleado`, los mismos filtros progresivos que Movimientos, paginación de 10/25/50 filas y dictamen individual/múltiple para pendientes. |
 | `/fallas-por-linea` | `FallasPorLineaPage` | Solicita el agregado SQL independiente, su periodo y datos por línea; gráfica de barras horizontales, búsqueda y tabla. |
 | `/reportes` | `ReportesPage` | Filtra localmente el conjunto ya cargado, calcula resúmenes por certificación/MATNR y exporta CSV. |
-| `/comparativa-mensual` | `ComparativaMensualPage` | Solo Administrador demo. Compara el mes calendario elegido con el anterior y señala picos propios en cuatro métricas. |
-| `/filtros` | `FiltrosPage` | Solo Administrador demo. Inicia con el último mes disponible, permite combinar filtros y consulta al servidor solo al pulsar Buscar. |
+| `/comparativa-mensual` | `ComparativaMensualPage` | Solo Administrador autenticado. Compara el mes calendario elegido con el anterior y señala picos propios en cuatro métricas. |
+| `/filtros` | `FiltrosPage` | Solo Administrador autenticado. Inicia con el último mes disponible, permite combinar filtros y consulta al servidor solo al pulsar Buscar. |
 | `/motivos` | `MotivosPage` | Referencias y formularios locales; no modifica catálogos SQL. |
 | `/configuracion` | `ConfiguracionPage` | Valores visuales/locales; guardar muestra confirmación, no persiste configuración corporativa. |
 
@@ -31,8 +31,14 @@ Interfaz React 19 + TypeScript + Vite. El frontend consume únicamente las rutas
 
 La base de rutas se configura con `VITE_API_BASE_URL`; si no existe, es `/api`. Durante desarrollo Vite enruta `/api` a `http://127.0.0.1:3001`.
 
+Al iniciar, la aplicación consulta `GET /api/auth/me` usando una cookie HttpOnly de sesión. El formulario envía credenciales locales a `POST /api/auth/login`; Administrador también puede usar `GET /api/auth/windows`, protegido por IIS. El navegador no guarda la contraseña ni el rol en `sessionStorage`. Vite no implementa ni simula Windows Authentication.
+
 | Interacción | Solicitud | Efecto |
 |---|---|---|
+| Identidad actual | `GET /api/auth/me` | Devuelve la cuenta y rol asociados a la sesión firmada. |
+| Login local | `POST /api/auth/login` | Recibe `{ usuario, contrasena }`; las credenciales se validan solo en backend y se establece cookie HttpOnly. |
+| Login Windows | `GET /api/auth/windows` | Intercambia una identidad Windows de Administrador validada por IIS por una sesión de aplicación. |
+| Cerrar sesión | `POST /api/auth/logout` | Invalida la cookie de sesión en el navegador. |
 | Carga compartida | `GET /api/movimientos` | Filas del periodo reciente calculado por el backend. |
 | Búsqueda Dashboard | `GET /api/movimientos?fechaInicio=...&fechaFin=...` | Fechas de UI son inclusivas; el cliente envía fin exclusivo (día posterior). |
 | Filtros paso a paso | `GET /api/movimientos` con fechas, tipo, estado, razón, certificación, línea, almacén y texto opcionales | Valida filtros en el backend, obtiene el intervalo y aplica criterios sobre las filas consultadas; el fin enviado es exclusivo. |
@@ -40,8 +46,8 @@ La base de rutas se configura con `VITE_API_BASE_URL`; si no existe, es `/api`. 
 | Fallas por línea | `GET /api/movimientos/fallas-por-linea` | Periodo reciente y agregado SQL por número y nombre de línea. |
 | Comparación mensual | `GET /api/movimientos/comparativa-mensual?mes=YYYY-MM` | Agrega el mes seleccionado y el anterior por tendencia diaria, certificación, razón y línea; independiente del conjunto compartido. |
 | Opciones de razón | `GET /api/movimientos/razones?movimientoTipoId=N` | Descripciones válidas desde `dbo.vw_Scrap_PowerBI`. |
-| Guardar razón | `PATCH /api/movimientos/:id/razon` | `{ razonId: number | null }`; responde 403 en el middleware actual. |
-| Aprobar/rechazar | `PATCH /api/movimientos/:id/dictamen` | `{ aprobado: 1 | 4, aprobadoPor }`; `1` aprueba y `4` rechaza; cambia datos reales. |
+| Guardar razón | `PATCH /api/movimientos/:id/razon` | `{ razonId: number | null }`; disponible solo para Administrador. |
+| Aprobar/rechazar | `PATCH /api/movimientos/:id/dictamen` | `{ aprobado: 1 | 4 }`; `1` aprueba y `4` rechaza; el servidor escribe la identidad de la sesión autenticada y cambia datos reales. |
 
 El cliente comprueba `response.ok`, `exitoso` y que exista la estructura de datos esperada. Si la llamada falla, propaga el error a la página/contexto; no sustituye una respuesta SQL fallida por movimientos mock.
 
@@ -56,8 +62,8 @@ El cliente comprueba `response.ok`, `exitoso` y que exista la estructura de dato
 - Filtros paso a paso propone por defecto el mes calendario de la fecha disponible más reciente. Al pulsar Buscar envía los filtros opcionales a `GET /api/movimientos`; no carga resultados nuevos mientras se cambian opciones.
 - La fecha de aprobación mostrada en Movimientos proviene de `dbo.Movimientos.dtAprobado`; los pendientes muestran “Sin aprobar”.
 - Las tablas de Movimientos y Aprobaciones permiten desplazamiento horizontal y envuelven el texto largo en varias líneas para mostrar completos los valores, sin truncarlos con puntos suspensivos.
-- Dashboard, Comparación mensual y Filtros paso a paso son exclusivos de Administrador demo. Gerente y Superintendente tienen Movimientos y Aprobaciones. Las rutas restringidas también redirigen al intentar abrirlas directamente; esto sigue siendo navegación de interfaz, no permisos del backend.
-- Aprobar o denegar una fila abre directamente un diálogo de confirmación, sin la pantalla intermedia de revisión. Se conserva el nombre responsable editable y el comentario obligatorio al rechazar Scrap.
+- Dashboard, Comparación mensual y Filtros paso a paso son exclusivos de Administrador. Actualmente solo `alejandro.puente1@magna.com` se configura con ese rol; el backend deniega otras cuentas.
+- Aprobar o denegar una fila abre directamente un diálogo de confirmación, sin la pantalla intermedia de revisión. El responsable proviene de la sesión autenticada y no se captura manualmente; se mantiene el comentario obligatorio al rechazar Scrap.
 - El Dashboard consulta otro intervalo al pulsar **Buscar**. El error y rango personalizado corresponden a esa página; no reemplaza la lista compartida para las otras pantallas.
 - La gráfica de aprobaciones consulta en forma independiente. «Todas las aprobaciones» no usa rango; «Mes seleccionado» se sincroniza con el periodo aplicado del Dashboard y filtra por `dtAprobado`, fecha real del dictamen.
 - Reportes no solicita al backend el rango filtrado: reduce en memoria el conjunto cargado por el contexto. Por tanto no puede mostrar fechas que quedaron fuera de ese conjunto.
@@ -114,12 +120,13 @@ npm run preview
 ## Límites de seguridad
 
 - El navegador no debe recibir secretos ni conectarse a `executeSQLCommand`.
-- La API local no implementa autenticación ni rol gerente. Dictámenes persistentes están habilitados para cualquier cliente que alcance el backend; los demás `PATCH`, incluido cambio de razón, se bloquean con 403.
-- El campo de responsable es texto suministrado por el usuario.
-- CORS se limita a `CORS_ORIGINS` (orígenes locales por defecto), pero no sustituye autenticación ni autorización.
+- En IIS, Windows Authentication se limita a `/api/auth/windows`; los demás accesos usan sesión local.
+- Las contraseñas locales se guardan como hashes scrypt en `BaseDeDatos/.env`; nunca se incluyen en el frontend ni en archivos versionados.
+- El nombre de responsable de un dictamen se obtiene del backend a partir de la sesión, no de un campo enviado por el navegador.
+- Vite y `vite preview` no simulan autenticación. La prueba automatizada de autorización no sustituye la prueba integrada de IIS/AD/Kerberos o NTLM.
 - Datos de costos, historial, empleados y funcionalidades SAP no deben usarse como registros oficiales mientras sigan siendo locales/mock.
 
-Consulta la [documentación técnica](../Documentacion.md), el [README del proyecto](../README.md) y la [guía de conexión](../BaseDeDatos/ConexionBaseDatos.md).
+Consulta la [documentación técnica](../Documentacion.md), el [README del proyecto](../README.md), la [guía de conexión](../BaseDeDatos/ConexionBaseDatos.md) y la [configuración de IIS](../IIS-Windows-Authentication.md).
 
 ## Cambio reciente: gráfica de aprobaciones (2 de noviembre de 2026)
 

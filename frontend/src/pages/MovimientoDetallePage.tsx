@@ -7,7 +7,7 @@ import {
   Tag,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
-import { useDemoSession } from '../context/demoSession';
+import { useAuth } from '../context/authContext';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
@@ -18,7 +18,7 @@ import type { OpcionRazon } from '../types';
 export const MovimientoDetallePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { usuario } = useDemoSession();
+  const { usuario } = useAuth();
   const { movimientos, movimientosCargando, actualizarRazonMovimiento } = useScrap();
   const movimientoEnLista = movimientos.find((m) => m.id === id || m.serial === id);
   const [movimientoConsultado, setMovimientoConsultado] = useState<{
@@ -64,7 +64,7 @@ export const MovimientoDetallePage: React.FC = () => {
   }, [id, movimientoEnLista, movimientosCargando]);
 
   useEffect(() => {
-    if (movimientoTipoId === undefined) return;
+    if (usuario?.rol !== 'Administrador' || movimientoTipoId === undefined) return;
     let vigente = true;
     ScrapService.obtenerRazones(movimientoTipoId)
       .then((opciones) => {
@@ -84,7 +84,7 @@ export const MovimientoDetallePage: React.FC = () => {
     return () => {
       vigente = false;
     };
-  }, [movimientoTipoId]);
+  }, [movimientoTipoId, usuario?.rol]);
 
   const catalogoActual = catalogoRazones?.movimientoTipoId === movimientoTipoId ? catalogoRazones : null;
   const razonesDisponibles = catalogoActual?.opciones ?? [];
@@ -345,7 +345,7 @@ export const MovimientoDetallePage: React.FC = () => {
                 Corregir razón del movimiento
               </label>
               <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                Los cambios de razón están deshabilitados durante la demostración para evitar escrituras con una identidad no verificada.
+                Los cambios de razón se registran en SOE con la cuenta de Windows autenticada.
               </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <select

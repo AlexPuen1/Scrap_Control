@@ -2,7 +2,7 @@
 
 **Una vista práctica para consultar y dar seguimiento a movimientos de Scrap.**
 
-SCRAPControl es una aplicación web interna que reúne información de movimientos registrados en la base corporativa **SOE**. Ayuda a los equipos a revisar qué ocurrió, cuándo, en qué certificación o línea, y qué razón está asociada con cada movimiento. También permite registrar un dictamen. Aunque existe una ruta de actualización de razón, permanece bloqueada por el backend en la configuración demo actual.
+SCRAPControl es una aplicación web interna que reúne información de movimientos registrados en la base corporativa **SOE**. Ayuda a los equipos a revisar qué ocurrió, cuándo, en qué certificación o línea, y qué razón está asociada con cada movimiento. También permite registrar un dictamen. Gerente y Superintendente usan credenciales locales; Administrador puede usar una cuenta local o Windows Authentication mediante IIS.
 
 > **En pocas palabras:** consulta información operativa, la organiza en listas y gráficas, y facilita revisar movimientos pendientes. No reemplaza los sistemas corporativos ni decide por sí misma qué debe aprobarse.
 
@@ -11,7 +11,7 @@ SCRAPControl es una aplicación web interna que reúne información de movimient
 - **Entender la situación del Scrap:** consultar cantidades y movimientos del periodo disponible, y observar su distribución por fecha, certificación, línea y razón.
 - **Encontrar registros:** buscar y filtrar movimientos para revisar sus datos y seguimiento.
 - **Dar seguimiento a pendientes:** revisar movimientos pendientes y registrar si se aprueban o rechazan, individualmente o en grupo.
-- **Mantener la razón asociada:** consultar las razones disponibles; la modificación de una razón no está habilitada en la configuración demo actual.
+- **Mantener la razón asociada:** consultar las razones disponibles y, para Administradores autorizados, modificar la razón asociada.
 - **Preparar información para revisión:** consultar reportes en pantalla y exportar movimientos a un archivo CSV que puede abrirse en Excel.
 
 La herramienta apoya la revisión y el seguimiento; **la interpretación de los resultados y las decisiones de negocio corresponden a las personas responsables**.
@@ -28,7 +28,7 @@ El equipo revisa listas, fichas, indicadores y reportes
 Cuando corresponde, registra un dictamen autorizado
 ```
 
-La aplicación obtiene información mediante un servicio corporativo. Algunas pantallas consultan datos directamente para generar sus resúmenes; otras filtran o agrupan los registros que ya se cargaron. Los cambios de dictamen y de razón se guardan en la base corporativa, no solo en la pantalla.
+La aplicación obtiene información mediante un servicio corporativo. Algunas pantallas consultan datos directamente para generar sus resúmenes; otras filtran o agrupan los registros que ya se cargaron. Los cambios de dictamen y de razón se guardan en la base corporativa, no solo en la pantalla. El backend valida las credenciales locales y aplica también las restricciones por rol; las contraseñas se configuran como hashes scrypt en el entorno privado.
 
 La interfaz usa fuentes disponibles en el equipo y no descarga tipografías de terceros al abrirse; la conexión que la aplicación necesita con SOE sigue siendo un destino de red independiente.
 
@@ -36,19 +36,19 @@ La interfaz usa fuentes disponibles en el equipo y no descarga tipografías de t
 
 | Sección | ¿Qué permite hacer? |
 |---|---|
-| **Panel principal** | Dashboard para Administradores demo: revisar tendencias y gráficas del periodo seleccionado. |
+| **Panel principal** | Dashboard para cuentas autorizadas como Administrador: revisar tendencias y gráficas del periodo seleccionado. |
 | **Movimientos** | Buscar por filtros guiados compartidos, consultar fecha de aprobación, abrir la ficha y exportar resultados a CSV. |
-| **Ficha del movimiento** | Consultar los datos disponibles del registro. La ruta de cambio de razón está bloqueada en la configuración demo actual. |
+| **Ficha del movimiento** | Consultar los datos disponibles del registro y editar la razón si la cuenta está autorizada como Administrador. |
 | **Aprobaciones** | Consultar piezas Scrap, pendientes, aprobados y rechazados; las tarjetas filtran el listado. Permite emitir dictámenes de pendientes. |
-| **Filtros paso a paso** | Para Administradores demo: elegir un mes y criterios; los resultados se consultan al pulsar Buscar. |
+| **Filtros paso a paso** | Para Administradores autorizados: elegir un mes y criterios; los resultados se consultan al pulsar Buscar. |
 | **Fallas por línea** | Consultar un resumen de cantidad y número de movimientos de Scrap por línea para un periodo reciente calculado por el sistema. |
-| **Comparación mensual** | Para Administradores demo: comparar el mes elegido con el anterior. |
+| **Comparación mensual** | Para Administradores autorizados: comparar el mes elegido con el anterior. |
 | **Reportes** | Filtrar los movimientos cargados; si se eligen ambas fechas, consultar el intervalo completo al servidor y exportar el resultado. |
 | **Motivos y configuración** | Páginas informativas/locales que ya no aparecen como pestañas en el menú lateral. |
 
 En el Dashboard, la gráfica **Aprobaciones por responsable** permite elegir entre todas las filas aprobadas de la tabla y las aprobaciones del periodo seleccionado. El conteo usa `aprobado = 1`, agrupa por `nvAprobadoPor` y, al elegir el periodo, delimita por la fecha de aprobación `dtAprobado`. No filtra por tipo de movimiento.
 
-Gerente y Superintendente solo ven Movimientos y Aprobaciones. Dashboard, Comparación mensual y Filtros paso a paso quedan para Administradores demo. En Movimientos, la columna **Supervisor** muestra el valor de `dbo.Movimientos.Empleado`. Estas restricciones son solo de navegación en la interfaz; no representan autorización real.
+Por ahora, solo la cuenta Windows configurada como Administrador tiene acceso. Las demás cuentas se deniegan en el backend hasta que se les asigne un rol. En Movimientos, la columna **Supervisor** muestra el valor de `dbo.Movimientos.Empleado`.
 
 ## ¿Qué significa cada estado del dictamen?
 
@@ -68,11 +68,15 @@ Al rechazar movimientos Scrap, la aplicación solicita un comentario y lo muestr
 |---|---|
 | Consulta movimientos y algunos datos relacionados desde SOE. | Crea movimientos nuevos ni sustituye el sistema donde se originan los registros. |
 | Presenta resúmenes, gráficas, filtros y exportaciones. | Garantiza que los datos disponibles incluyan todos los periodos o campos que un área necesita. |
-| Guarda dictámenes en datos corporativos. | Permite cambiar razones en el modo demo actual; determina si un movimiento debe aprobarse o verifica el rol de quien captura. |
+| Guarda dictámenes y cambios de razón en datos corporativos. | Determina por sí misma si un movimiento debe aprobarse. |
 | Permite revisar motivos en sus pantallas. | Sincroniza el catálogo local de «Motivos» con el catálogo corporativo usado para corregir razones. |
 | Muestra una comparación de periodos para facilitar el análisis. | Define por sí misma metas, límites aceptables, costos oficiales, OEE o causas raíz. |
 
-**Antes de registrar un dictamen:** verifique que el movimiento sea el correcto y que el cambio esté autorizado según el proceso de su área. El dictamen es persistente; la aplicación no ofrece una función para deshacerlo. El nombre del responsable que se captura es un dato de registro, no una comprobación de identidad.
+**Antes de registrar un dictamen:** verifique que el movimiento sea el correcto y que el cambio esté autorizado según el proceso de su área. El dictamen es persistente; la aplicación no ofrece una función para deshacerlo. El backend registra como responsable la identidad de Windows autenticada, no un nombre enviado por el navegador.
+
+## Acceso de Windows
+
+La versión productiva requiere HTTPS y un proxy IIS/ARR hacia Express. Anonymous Authentication debe estar habilitada para el sitio y Windows Authentication configurada únicamente para `/api/auth/windows`; IIS debe sobrescribir los encabezados internos de esa ruta. No despliegues secretos en el frontend ni expongas directamente el puerto Express. Consulta [Configuración de IIS](IIS-Windows-Authentication.md).
 
 ### Información que no debe interpretarse como dato oficial
 

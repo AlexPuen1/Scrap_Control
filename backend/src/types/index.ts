@@ -61,6 +61,47 @@ export interface OpcionRazonDB {
   descripcion: string;
 }
 
+export type PeriodoPrecioScrap = 'mes' | 'dos-meses' | 'seis-meses' | 'anio' | 'historico';
+
+export interface PrecioScrapDB {
+  id: number;
+  fecha: string;
+  matnr: string | null;
+  serial: string | null;
+  cantidad: number | string;
+  precioUnitarioUSD: number | string | null;
+  totalUSD: number | string | null;
+}
+
+export interface PrecioScrapResumenDB {
+  totalMovimientos: number | string;
+  piezasValorizadas: number | string;
+  piezasSinPrecio: number | string;
+  valorTotalUSD: number | string;
+  precioPromedioUSD: number | string | null;
+}
+
+export interface ReportePrecioScrap {
+  resumen?: {
+    totalMovimientos: number;
+    piezasValorizadas: number;
+    piezasSinPrecio: number;
+    valorTotalUSD: number;
+    precioPromedioUSD: number | null;
+  };
+  datos: {
+    id: number;
+    fecha: string;
+    matnr: string;
+    serial: string;
+    cantidad: number;
+    precioUnitarioUSD: number | null;
+    totalUSD: number | null;
+  }[];
+  pagina: number;
+  limite: number;
+}
+
 export interface FiltrosMovimientosQuery {
   busqueda?: string;
   tipoId?: string;

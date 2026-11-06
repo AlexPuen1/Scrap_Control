@@ -22,7 +22,7 @@ import {
   LabelList,
 } from 'recharts';
 import { useScrap } from '../context/ScrapContext';
-import { useDemoSession } from '../context/demoSession';
+import { useAuth } from '../context/authContext';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { ChartExplanation } from '../components/common/ChartExplanation';
@@ -65,7 +65,7 @@ function obtenerRangoUltimoMes(movimientos: Movimiento[]) {
 
 export const DashboardPage: React.FC = () => {
   const { movimientos, movimientosCargando, errorMovimientos, recargarMovimientos, turnoActivo } = useScrap();
-  const { usuario } = useDemoSession();
+  const { usuario } = useAuth();
   const [fechaHoy, setFechaHoy] = useState(() => formatearFechaLocal(new Date()));
   const [fechaInicio, setFechaInicio] = useState(obtenerInicioMesAnterior);
   const [fechaFin, setFechaFin] = useState(fechaHoy);
@@ -629,7 +629,7 @@ export const DashboardPage: React.FC = () => {
       {usuario?.rol === 'Administrador' && (
         <section aria-label="Actividad de reporte y aprobación de Scrap" className="space-y-3">
           <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-            Datos identificables visibles en modo demo. El rol Administrador solo oculta estas gráficas en la interfaz; la API todavía no protege los nombres por rol.
+            Los datos identificables de estas gráficas se entregan únicamente a cuentas autorizadas por el servidor.
           </div>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card

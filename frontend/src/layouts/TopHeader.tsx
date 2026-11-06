@@ -19,7 +19,7 @@ import { useScrap } from '../context/ScrapContext';
 import { INFO_PLANTA, TURNOS_PLANTA } from '../constants';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useDemoSession } from '../context/demoSession';
+import { useAuth } from '../context/authContext';
 
 interface TopHeaderProps {
   onOpenMobileMenu: () => void;
@@ -28,12 +28,13 @@ interface TopHeaderProps {
 export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
   const { theme, toggleTheme } = useTheme();
   const { notificaciones, turnoActivo, marcarNotificacionLeida, marcarTodasNotificacionesLeidas } = useScrap();
-  const { usuario, cerrarSesion } = useDemoSession();
+  const { usuario, cerrarSesion } = useAuth();
   const navigate = useNavigate();
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [horaActual, setHoraActual] = useState(() => new Date());
+  const [errorSesion, setErrorSesion] = useState<string | null>(null);
 
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -87,7 +88,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
       {/* Lado Derecho: Turno Activo + Notificaciones + Tema + Usuario */}
       <div className="flex items-center gap-2 sm:gap-3">
         <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200 sm:text-xs">
-          {usuario?.rol || 'Demostración'}
+          {usuario?.rol || 'Sin acceso'}
         </span>
 
         {/* Turno calculado automáticamente según el reloj local */}
@@ -221,11 +222,11 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
             className="flex items-center gap-2.5 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-slate-700 to-slate-900 dark:from-blue-600 dark:to-indigo-600 text-white flex items-center justify-center font-semibold text-xs shadow-xs border border-white/20">
-              ?
+              {usuario?.nombre.slice(0, 1).toLocaleUpperCase() || 'W'}
             </div>
             <div className="hidden xl:flex flex-col text-left">
               <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-tight">
-                {usuario?.nombre || 'Usuario de demostración'}
+                {usuario?.nombre || 'Usuario de Windows'}
               </span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
                 {usuario?.rol || 'Sin rol'}
@@ -250,7 +251,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
                 </div>
                 <div>
                   <h4 className="font-semibold text-slate-900 dark:text-white">{usuario?.nombre}</h4>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">{usuario?.rol} · acceso de demostración</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">{usuario?.rol} · sesión segura</p>
                 </div>
               </div>
 
@@ -268,13 +269,15 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
                 )}
                 <button
                   onClick={() => {
-                    cerrarSesion();
-                    setProfileOpen(false);
+                    void cerrarSesion().catch((error: unknown) => {
+                      setErrorSesion(error instanceof Error ? error.message : 'No se pudo cerrar sesión.');
+                    });
                   }}
-                  className="w-full text-left px-3 py-2 rounded-lg text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2"
+                  className="w-full text-left px-3 py-2 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
                 >
-                  <LogOut className="w-4 h-4" /> Salir de la demostración
+                  <LogOut className="w-4 h-4 text-slate-400" /> Cerrar sesión
                 </button>
+                {errorSesion && <p role="alert" className="px-3 py-2 text-rose-600">{errorSesion}</p>}
               </div>
             </motion.div>
           )}
